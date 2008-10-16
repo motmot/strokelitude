@@ -6,8 +6,14 @@ import wx
 import wx.xrc as xrc
 
 import numpy as np
+import enthought.traits.api as traits
+from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
+     VGroup, RangeEditor
 
-RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc") # trigger extraction
+#from enthought.chaco2 import api as chaco2
+
+# trigger extraction
+RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc")
 RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
@@ -28,7 +34,7 @@ class MaskPattern:
         self.gamma=gamma
 
     def get_all_linesegs(self,res=32):
-        """return linesegments to draw outlines of the pattern on the live display
+        """return linesegments outlining the pattern (for OpenGL type display)
 
         Return a list of linesegments [seg1, seg2, ..., segn]
 
@@ -58,11 +64,9 @@ class MaskPattern:
             # inner radius
             inner = np.array([self.r1*np.cos(theta),
                               self.r1*np.sin(theta)])
-            assert inner.shape[0]==2 # 2xres array with first row X, second row Y
             # outer radius
             outer = np.array([self.r2*np.cos(theta[::-1]),
                               self.r2*np.sin(theta[::-1])])
-            assert outer.shape[0]==2 # 2xres array with first row X, second row Y
 
             wing_verts = np.hstack(( inner, outer, inner[:,np.newaxis,0] ))
 
@@ -71,14 +75,51 @@ class MaskPattern:
 
         return linesegs
 
+
+class MaskData(traits.HasTraits):
+    x = traits.Range(0,640,422)
+    y = traits.Range(0,480,292)
+
+    traits_view = View( Group( ( Item('x'),#,editor=RangeEditor()),
+                                 Item('y'),#,editor=RangeEditor()),
+                                 ),
+                               orientation = 'horizontal',
+                               show_border = False,
+                               ),
+                        title = 'Mask Parameters' )
+
 class StrokelitudeClass:
+
     def __init__(self,wx_parent):
         self.wx_parent = wx_parent
-        self.frame = RES.LoadFrame(self.wx_parent,"FVIEW_STROKELITUDE_FRAME") # make frame main panel
+        self.frame = RES.LoadFrame(self.wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self._init_frame()
         self.masks = {}
 
     def _init_frame(self):
+        panel = xrc.XRCCTRL(self.frame,'TRAITS_PANEL')
+        panel.SetBackgroundColour((255,0,0))
+
+        #sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        if 1:
+            data = MaskData()
+            data.edit_traits( parent=panel,
+                              kind='subpanel',
+                              )
+        else:
+            p2 = wx.Panel(panel)
+            p2.SetBackgroundColour((0,255,0))
+            sizer.Add(p2, 1, wx.EXPAND)
+            p2.Fit()
+
+        panel.SetSizer(sizer)
+        panel.SetAutoLayout(True)
+        panel.Layout()
+        panel.Fit()
+
+
         # bind controllers
         ctrl = xrc.XRCCTRL(self.frame,'CENTER_X')
         wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnCenterX)
@@ -189,4 +230,9 @@ class StrokelitudeClass:
                                           xrc.XRCCTRL(self.frame,'ARC_GAMMA').GetValue(),
                                           )
 
+
+if __name__=='__main__':
+
+    data = MaskData()
+    data.configure_traits()
 

@@ -16,12 +16,15 @@
                         <checked>1</checked>
                       </object>
                     </object>
+                    <object class="sizeritem">
+                      <object class="wxPanel" name="TRAITS_PANEL"/>
+                      <option>1</option>
+                      <flag>wxEXPAND</flag>
+                    </object>
+                    
                     <orient>wxVERTICAL</orient>
                     <object class="sizeritem">
                       <object class="wxFlexGridSizer">
-                        <cols>2</cols>
-                        <rows>1</rows>
-                        <growablecols>1</growablecols>
                         <object class="sizeritem">
                           <object class="wxStaticText">
                             <label>Center</label>
@@ -154,8 +157,10 @@
                           <option>1</option>
                           <flag>wxEXPAND</flag>
                         </object>
+                        <cols>2</cols>
+                        <rows>1</rows>
+                        <growablecols>1</growablecols>
                       </object>
-                      <option>1</option>
                       <flag>wxALL|wxEXPAND</flag>
                       <border>5</border>
                     </object>
