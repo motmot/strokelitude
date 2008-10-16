@@ -40,7 +40,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="CENTER_X">
-                            <value>320</value>
+                            <value>422</value>
                             <min>0</min>
                             <max>640</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -56,7 +56,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="CENTER_Y">
-                            <value>240</value>
+                            <value>292</value>
                             <min>0</min>
                             <max>480</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -82,7 +82,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="ARC_R1">
-                            <value>50</value>
+                            <value>100</value>
                             <min>0</min>
                             <max>640</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -98,7 +98,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="ARC_R2">
-                            <value>100</value>
+                            <value>151</value>
                             <min>0</min>
                             <max>640</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -114,7 +114,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="ARC_ALPHA">
-                            <value>45</value>
+                            <value>52</value>
                             <min>0</min>
                             <max>180</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -130,7 +130,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="ARC_BETA">
-                            <value>175</value>
+                            <value>82</value>
                             <min>0</min>
                             <max>180</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
@@ -146,7 +146,7 @@
                         </object>
                         <object class="sizeritem">
                           <object class="wxSlider" name="ARC_GAMMA">
-                            <value>90</value>
+                            <value>206</value>
                             <min>0</min>
                             <max>360</max>
                             <style>wxSL_HORIZONTAL|wxSL_LABELS</style>

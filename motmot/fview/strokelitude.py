@@ -14,21 +14,27 @@ RES.LoadFromString(open(RESFILE).read())
 D2R = np.pi/180.0
 
 class MaskPattern:
-    def __init__(self,widthheight):
-        w,h = widthheight
+    """Describe the geometry of the pattern"""
+    def __init__(self,x,y,r1,r2,alpha,beta,gamma):
+        """initialize the state variables of the mask"""
+        self.x = x
+        self.y = y
 
-        self.x = w/2.0
-        self.y = h/2.0
+        self.r1 = r1
+        self.r2 = r2
 
-        self.r1 = 50.0
-        self.r2 = 100.0
-
-        self.alpha=45.0
-        self.beta=175.0
-        self.gamma=90.0
+        self.alpha=alpha
+        self.beta=beta
+        self.gamma=gamma
 
     def get_all_linesegs(self,res=32):
+        """return linesegments to draw outlines of the pattern on the live display
 
+        Return a list of linesegments [seg1, seg2, ..., segn]
+
+        Each line segment is in the form (x0,y0, x1,y1, ..., xn,yn)
+
+        """
         # This work is insignificant compared to the function call
         # overhead to draw the linesegs in the dumb way done by
         # wxglvideo (caching the values didn't reduce CPU time on
@@ -150,9 +156,9 @@ class StrokelitudeClass:
         class.
 
         """
-
         draw_points = [] #  [ (x,y) ]
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
+
         if self.draw_mask_ctrl.IsChecked():
             mask = self.masks[cam_id]
             draw_linesegs.extend( mask.get_all_linesegs() )
@@ -172,4 +178,15 @@ class StrokelitudeClass:
                                      max_width=None,
                                      max_height=None):
 
-        self.masks[cam_id] = MaskPattern((max_width,max_height))
+        self.masks[cam_id] = MaskPattern( xrc.XRCCTRL(self.frame,'CENTER_X').GetValue(),
+                                          xrc.XRCCTRL(self.frame,'CENTER_Y').GetValue(),
+
+                                          xrc.XRCCTRL(self.frame,'ARC_R1').GetValue(),
+                                          xrc.XRCCTRL(self.frame,'ARC_R2').GetValue(),
+
+                                          xrc.XRCCTRL(self.frame,'ARC_ALPHA').GetValue(),
+                                          xrc.XRCCTRL(self.frame,'ARC_BETA').GetValue(),
+                                          xrc.XRCCTRL(self.frame,'ARC_GAMMA').GetValue(),
+                                          )
+
+
