@@ -1,0 +1,195 @@
+<?xml version="1.0" ?>
+<resource>
+  <object class="wxFrame" name="FVIEW_STROKELITUDE_FRAME">
+    <object class="wxBoxSizer">
+      <orient>wxVERTICAL</orient>
+      <object class="sizeritem">
+        <object class="wxNotebook">
+          <object class="notebookpage">
+            <object class="wxPanel">
+              <object class="wxBoxSizer">
+                <object class="sizeritem">
+                  <object class="wxBoxSizer">
+                    <object class="sizeritem">
+                      <object class="wxCheckBox" name="DRAW_MASK_REGION">
+                        <label>Draw mask region</label>
+                        <checked>1</checked>
+                      </object>
+                    </object>
+                    <orient>wxVERTICAL</orient>
+                    <object class="sizeritem">
+                      <object class="wxFlexGridSizer">
+                        <cols>2</cols>
+                        <rows>1</rows>
+                        <growablecols>1</growablecols>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>Center</label>
+                          </object>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticLine"/>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>x</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="CENTER_X">
+                            <value>320</value>
+                            <min>0</min>
+                            <max>640</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>y</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="CENTER_Y">
+                            <value>240</value>
+                            <min>0</min>
+                            <max>480</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>Arcs</label>
+                          </object>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticLine"/>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>r1</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="ARC_R1">
+                            <value>50</value>
+                            <min>0</min>
+                            <max>640</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>r2</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="ARC_R2">
+                            <value>100</value>
+                            <min>0</min>
+                            <max>640</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>alpha</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="ARC_ALPHA">
+                            <value>45</value>
+                            <min>0</min>
+                            <max>180</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>beta</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="ARC_BETA">
+                            <value>175</value>
+                            <min>0</min>
+                            <max>180</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxStaticText">
+                            <label>gamma</label>
+                          </object>
+                          <flag>wxALIGN_RIGHT|wxALIGN_CENTRE_VERTICAL</flag>
+                        </object>
+                        <object class="sizeritem">
+                          <object class="wxSlider" name="ARC_GAMMA">
+                            <value>90</value>
+                            <min>0</min>
+                            <max>360</max>
+                            <style>wxSL_HORIZONTAL|wxSL_LABELS</style>
+                          </object>
+                          <option>1</option>
+                          <flag>wxEXPAND</flag>
+                        </object>
+                      </object>
+                      <option>1</option>
+                      <flag>wxALL|wxEXPAND</flag>
+                      <border>5</border>
+                    </object>
+                  </object>
+                  <option>1</option>
+                  <flag>wxALL|wxEXPAND</flag>
+                  <border>5</border>
+                </object>
+                <orient>wxHORIZONTAL</orient>
+              </object>
+            </object>
+            <label>Image regions</label>
+          </object>
+          <object class="notebookpage">
+            <object class="wxPanel">
+              <object class="wxBoxSizer">
+                <orient>wxVERTICAL</orient>
+                <object class="sizeritem">
+                  <object class="wxStaticText">
+                    <label>(Not yet implemented.)</label>
+                    <enabled>0</enabled>
+                  </object>
+                  <option>1</option>
+                  <flag>wxEXPAND|wxALIGN_CENTRE|wxALIGN_CENTRE_VERTICAL|wxALIGN_CENTRE_HORIZONTAL</flag>
+                </object>
+              </object>
+            </object>
+            <label>Chart recorder</label>
+          </object>
+        </object>
+        <option>1</option>
+        <flag>wxEXPAND</flag>
+      </object>
+    </object>
+    <title>Stroke Amplitude</title>
+  </object>
+</resource>
