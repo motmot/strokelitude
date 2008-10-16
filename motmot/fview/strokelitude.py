@@ -43,16 +43,28 @@ class MaskData(traits.HasTraits):
         self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
 
     traits_view = View( Group( ( Item('x',
-                                      editor=RangeEditor(high_name='maxx'),
+                                      editor=RangeEditor(high_name='maxx',
+                                                         format='%.1f',
+                                                         label_width=50,
+                                                         ),
                                       ),
                                  Item('y',
-                                      editor=RangeEditor(high_name='maxy'),
+                                      editor=RangeEditor(high_name='maxy',
+                                                         format='%.1f',
+                                                         label_width=50,
+                                                         ),
                                       ),
                                  Item('wingsplit',
-                                      editor=RangeEditor(high_name='maxdim'),
+                                      editor=RangeEditor(high_name='maxdim',
+                                                         format='%.1f',
+                                                         label_width=50,
+                                                         ),
                                       ),
                                  Item('r1',
-                                      editor=RangeEditor(high_name='r2'),
+                                      editor=RangeEditor(high_name='r2',
+                                                         format='%.1f',
+                                                         label_width=50,
+                                                         ),
                                       ),
                                  Item('r2',
                                       editor=RangeEditor(low_name='r1',
@@ -70,6 +82,32 @@ class MaskData(traits.HasTraits):
                                ),
                         title = 'Mask Parameters',
                         )
+
+    def _get_rotation_translation(self):
+        gamma = self.gamma*D2R
+        rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
+                             [ np.sin( gamma ), np.cos(gamma)]])
+        translation = np.array( [[self.x],
+                                 [self.y]], dtype=np.float64 )
+        return rotation,translation
+
+    def get_extra_linesegs(self):
+        """return linesegments that contextualize parameters"""
+        linesegs = []
+        rotation,translation = self._get_rotation_translation()
+        if 1:
+            # longitudinal axis (along fly's x coord)
+            verts = np.array([[-100,100],
+                              [0,     0]],dtype=np.float)
+            verts = np.dot(rotation, verts) + translation
+            linesegs.append( verts.T.ravel() )
+        if 1:
+            # transverse axis (along fly's y coord)
+            verts = np.array([[0,0],
+                              [-10,10]],dtype=np.float)
+            verts = np.dot(rotation, verts) + translation
+            linesegs.append( verts.T.ravel() )
+        return linesegs
 
     def get_quads(self,side,res=5):
         """return linesegments outlining the pattern on a given side.
@@ -89,7 +127,6 @@ class MaskData(traits.HasTraits):
 
         alpha = self.alpha*D2R
         beta = self.beta*D2R
-        gamma = self.gamma*D2R
 
         if side=='left':
             all_theta = np.linspace(alpha,beta,res+1)
@@ -98,10 +135,7 @@ class MaskData(traits.HasTraits):
             all_theta = np.linspace(-alpha,-beta,res+1)
             wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
 
-        rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
-                             [ np.sin( gamma ), np.cos(gamma)]])
-        translation = np.array( [[self.x],
-                                 [self.y]], dtype=np.float64 )
+        rotation,translation = self._get_rotation_translation()
 
         linesegs = []
         for i in range(res):
@@ -142,8 +176,11 @@ class StrokelitudeClass:
 
 
     def on_mask_change(self):
-        left_rects = self.maskdata.get_quads('left')
-        right_rects = self.maskdata.get_quads('right')
+        left_quads = self.maskdata.get_quads('left')
+        right_quads = self.maskdata.get_quads('right')
+
+        ## for quad in left_quads:
+        ##     print quad
 
     def get_frame(self):
         """return wxPython frame widget"""
@@ -168,6 +205,7 @@ class StrokelitudeClass:
         if self.draw_mask_ctrl.IsChecked():
             draw_linesegs.extend( self.maskdata.get_quads('left') )
             draw_linesegs.extend( self.maskdata.get_quads('right') )
+            draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
         return draw_points, draw_linesegs
 
     def set_view_flip_LR( self, val ):
