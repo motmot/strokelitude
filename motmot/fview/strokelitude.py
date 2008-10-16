@@ -19,19 +19,31 @@ RES.LoadFromString(open(RESFILE).read())
 
 D2R = np.pi/180.0
 
-class MaskPattern:
-    """Describe the geometry of the pattern"""
-    def __init__(self,x,y,r1,r2,alpha,beta,gamma):
-        """initialize the state variables of the mask"""
-        self.x = x
-        self.y = y
 
-        self.r1 = r1
-        self.r2 = r2
+class MaskData(traits.HasTraits):
+    x = traits.Range(0.0, 640.0, 422.0)
+    y = traits.Range(0.0, 480.0, 292.0)
+    r1 = traits.Range(0.0, 640.0, 100.0)
+    r2 = traits.Range(0.0, 640.0, 151.0)
+    alpha = traits.Range(0.0, 180.0, 52.0)
+    beta = traits.Range(0.0, 180.0, 82.0)
+    gamma = traits.Range(0.0, 360.0, 206.0)
 
-        self.alpha=alpha
-        self.beta=beta
-        self.gamma=gamma
+    traits_view = View( Group( ( Item('x',
+                                      #editor=RangeEditor(), # broken?
+                                      ),
+                                 Item('y'),
+                                 Item('r1'),
+                                 Item('r2'),
+                                 Item('alpha'),
+                                 Item('beta'),
+                                 Item('gamma'),
+                                 ),
+                               orientation = 'horizontal',
+                               show_border = False,
+                               ),
+                        title = 'Mask Parameters',
+                        )
 
     def get_all_linesegs(self,res=32):
         """return linesegments outlining the pattern (for OpenGL type display)
@@ -75,101 +87,23 @@ class MaskPattern:
 
         return linesegs
 
-
-class MaskData(traits.HasTraits):
-    x = traits.Range(0,640,422)
-    y = traits.Range(0,480,292)
-
-    traits_view = View( Group( ( Item('x',
-                                      #editor=RangeEditor(), # broken for now?
-                                      ),
-                                 Item('y'),
-                                 ),
-                               orientation = 'horizontal',
-                               show_border = False,
-                               ),
-                        title = 'Mask Parameters' )
-
 class StrokelitudeClass:
 
     def __init__(self,wx_parent):
-        self.wx_parent = wx_parent
-        self.frame = RES.LoadFrame(self.wx_parent,"FVIEW_STROKELITUDE_FRAME")
-        self._init_frame()
-        self.masks = {}
+        self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
+        self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
+        self.maskdata = MaskData()
 
-    def _init_frame(self):
         panel = xrc.XRCCTRL(self.frame,'TRAITS_PANEL')
         sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        data = MaskData()
-        control = data.edit_traits( parent=panel,
-                                    kind='subpanel',
-                                    ).control
+        control = self.maskdata.edit_traits( parent=panel,
+                                             kind='subpanel',
+                                             ).control
         sizer.Add(control, 1, wx.EXPAND)
         control.GetParent().SetMinSize(control.GetMinSize())
 
         self.frame.Fit()
-
-        # bind controllers
-        ctrl = xrc.XRCCTRL(self.frame,'CENTER_X')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnCenterX)
-        ctrl = xrc.XRCCTRL(self.frame,'CENTER_Y')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnCenterY)
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_R1')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnArcR1)
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_R2')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnArcR2)
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_ALPHA')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnArcAlpha)
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_BETA')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnArcBeta)
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_GAMMA')
-        wx.EVT_COMMAND_SCROLL(ctrl, ctrl.GetId(), self.OnArcGamma)
-
-        self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
-
-
-    def OnCenterX(self, event):
-        ctrl = xrc.XRCCTRL(self.frame,'CENTER_X')
-        for mask in self.masks.itervalues():
-            mask.x = ctrl.GetValue()
-    def OnCenterY(self, event):
-        ctrl = xrc.XRCCTRL(self.frame,'CENTER_Y')
-        for mask in self.masks.itervalues():
-            mask.y = ctrl.GetValue()
-    def OnArcR1(self, event):
-        ctrl_r1 = xrc.XRCCTRL(self.frame,'ARC_R1')
-        ctrl_r2 = xrc.XRCCTRL(self.frame,'ARC_R2')
-        v1 = ctrl_r1.GetValue()
-        if v1 > ctrl_r2.GetValue():
-            ctrl_r1.SetValue( ctrl_r2.GetValue() )
-        else:
-            for mask in self.masks.itervalues():
-                mask.r1 = v1
-
-    def OnArcR2(self, event):
-        ctrl_r1 = xrc.XRCCTRL(self.frame,'ARC_R1')
-        ctrl_r2 = xrc.XRCCTRL(self.frame,'ARC_R2')
-        v2 = ctrl_r2.GetValue()
-        if ctrl_r1.GetValue() > v2:
-            ctrl_r2.SetValue( ctrl_r1.GetValue() )
-        else:
-            for mask in self.masks.itervalues():
-                mask.r2 = v2
-
-    def OnArcAlpha(self, event):
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_ALPHA')
-        for mask in self.masks.itervalues():
-            mask.alpha = ctrl.GetValue()
-    def OnArcGamma(self, event):
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_GAMMA')
-        for mask in self.masks.itervalues():
-            mask.gamma = ctrl.GetValue()
-    def OnArcBeta(self, event):
-        ctrl = xrc.XRCCTRL(self.frame,'ARC_BETA')
-        for mask in self.masks.itervalues():
-            mask.beta = ctrl.GetValue()
 
     def get_frame(self):
         """return wxPython frame widget"""
@@ -192,8 +126,7 @@ class StrokelitudeClass:
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.draw_mask_ctrl.IsChecked():
-            mask = self.masks[cam_id]
-            draw_linesegs.extend( mask.get_all_linesegs() )
+            draw_linesegs.extend( self.maskdata.get_all_linesegs() )
         return draw_points, draw_linesegs
 
     def set_view_flip_LR( self, val ):
@@ -209,18 +142,7 @@ class StrokelitudeClass:
                                      pixel_format=None,
                                      max_width=None,
                                      max_height=None):
-
-        self.masks[cam_id] = MaskPattern( xrc.XRCCTRL(self.frame,'CENTER_X').GetValue(),
-                                          xrc.XRCCTRL(self.frame,'CENTER_Y').GetValue(),
-
-                                          xrc.XRCCTRL(self.frame,'ARC_R1').GetValue(),
-                                          xrc.XRCCTRL(self.frame,'ARC_R2').GetValue(),
-
-                                          xrc.XRCCTRL(self.frame,'ARC_ALPHA').GetValue(),
-                                          xrc.XRCCTRL(self.frame,'ARC_BETA').GetValue(),
-                                          xrc.XRCCTRL(self.frame,'ARC_GAMMA').GetValue(),
-                                          )
-
+        pass
 
 if __name__=='__main__':
 
