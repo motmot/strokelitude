@@ -98,27 +98,16 @@ class StrokelitudeClass:
 
     def _init_frame(self):
         panel = xrc.XRCCTRL(self.frame,'TRAITS_PANEL')
-        panel.SetBackgroundColour((255,0,0))
-
-        #sizer = wx.BoxSizer(wx.VERTICAL)
         sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        if 1:
-            data = MaskData()
-            data.edit_traits( parent=panel,
-                              kind='subpanel',
-                              )
-        else:
-            p2 = wx.Panel(panel)
-            p2.SetBackgroundColour((0,255,0))
-            sizer.Add(p2, 1, wx.EXPAND)
-            p2.Fit()
+        data = MaskData()
+        control = data.edit_traits( parent=panel,
+                                    kind='subpanel',
+                                    ).control
+        sizer.Add(control, 1, wx.EXPAND)
+        control.GetParent().SetMinSize(control.GetMinSize())
 
-        panel.SetSizer(sizer)
-        panel.SetAutoLayout(True)
-        panel.Layout()
-        panel.Fit()
-
+        self.frame.Fit()
 
         # bind controllers
         ctrl = xrc.XRCCTRL(self.frame,'CENTER_X')

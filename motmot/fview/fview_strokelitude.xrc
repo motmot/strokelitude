@@ -18,10 +18,8 @@
                     </object>
                     <object class="sizeritem">
                       <object class="wxPanel" name="TRAITS_PANEL"/>
-                      <option>1</option>
                       <flag>wxEXPAND</flag>
                     </object>
-                    
                     <orient>wxVERTICAL</orient>
                     <object class="sizeritem">
                       <object class="wxFlexGridSizer">
