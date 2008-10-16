@@ -9,6 +9,7 @@ import numpy as np
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
+import cairo
 
 #from enthought.chaco2 import api as chaco2
 
@@ -23,6 +24,7 @@ D2R = np.pi/180.0
 class MaskData(traits.HasTraits):
     x = traits.Range(0.0, 640.0, 422.0)
     y = traits.Range(0.0, 480.0, 292.0)
+    wingsplit = traits.Range(0.0, 640.0, 20.0)
     r1 = traits.Range(0.0, 640.0, 100.0)
     r2 = traits.Range(0.0, 640.0, 151.0)
     alpha = traits.Range(0.0, 180.0, 52.0)
@@ -33,6 +35,7 @@ class MaskData(traits.HasTraits):
                                       #editor=RangeEditor(), # broken?
                                       ),
                                  Item('y'),
+                                 Item('wingsplit'),
                                  Item('r1'),
                                  Item('r2'),
                                  Item('alpha'),
@@ -45,7 +48,7 @@ class MaskData(traits.HasTraits):
                         title = 'Mask Parameters',
                         )
 
-    def get_all_linesegs(self,res=32):
+    def get_rectangles(self,side,res=5):
         """return linesegments outlining the pattern (for OpenGL type display)
 
         Return a list of linesegments [seg1, seg2, ..., segn]
@@ -63,8 +66,12 @@ class MaskData(traits.HasTraits):
         beta = self.beta*D2R
         gamma = self.gamma*D2R
 
-        theta1 = np.linspace(alpha,beta,res) # left wing
-        theta2 = np.linspace(-alpha,-beta,res) # right wing
+        if side=='left':
+            all_theta = np.linspace(alpha,beta,res+1)
+            wingsplit_trans = np.array([[0.0],[self.wingsplit]])
+        elif side=='right':
+            all_theta = np.linspace(-alpha,-beta,res+1)
+            wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
 
         rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
                              [ np.sin( gamma ), np.cos(gamma)]])
@@ -72,7 +79,8 @@ class MaskData(traits.HasTraits):
                                  [self.y]], dtype=np.float64 )
 
         linesegs = []
-        for theta in (theta1, theta2):
+        for i in range(res):
+            theta = all_theta[i:(i+2)]
             # inner radius
             inner = np.array([self.r1*np.cos(theta),
                               self.r1*np.sin(theta)])
@@ -80,7 +88,7 @@ class MaskData(traits.HasTraits):
             outer = np.array([self.r2*np.cos(theta[::-1]),
                               self.r2*np.sin(theta[::-1])])
 
-            wing_verts = np.hstack(( inner, outer, inner[:,np.newaxis,0] ))
+            wing_verts = np.hstack(( inner, outer, inner[:,np.newaxis,0] ))+wingsplit_trans
 
             wing_verts = np.dot(rotation, wing_verts) + translation
             linesegs.append( wing_verts.T.ravel() )
@@ -126,7 +134,8 @@ class StrokelitudeClass:
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.draw_mask_ctrl.IsChecked():
-            draw_linesegs.extend( self.maskdata.get_all_linesegs() )
+            draw_linesegs.extend( self.maskdata.get_rectangles('left') )
+            draw_linesegs.extend( self.maskdata.get_rectangles('right') )
         return draw_points, draw_linesegs
 
     def set_view_flip_LR( self, val ):
