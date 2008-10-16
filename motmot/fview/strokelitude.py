@@ -22,22 +22,45 @@ D2R = np.pi/180.0
 
 
 class MaskData(traits.HasTraits):
-    x = traits.Range(0.0, 640.0, 422.0)
-    y = traits.Range(0.0, 480.0, 292.0)
-    wingsplit = traits.Range(0.0, 640.0, 20.0)
-    r1 = traits.Range(0.0, 640.0, 100.0)
-    r2 = traits.Range(0.0, 640.0, 151.0)
+    x = traits.Float(422.0)
+    y = traits.Float(292.0)
+    wingsplit = traits.Float(20.0)
+    r1 = traits.Float(100.0)
+    r2 = traits.Float(151.0)
+
     alpha = traits.Range(0.0, 180.0, 52.0)
     beta = traits.Range(0.0, 180.0, 82.0)
     gamma = traits.Range(0.0, 360.0, 206.0)
 
+    # these are just necesary for establishing limits in the view:
+    maxx = traits.Float(699.9)
+    maxy = traits.Float(699.9)
+    maxdim = traits.Float(500)
+
+    def _maxx_changed(self):
+        self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
+    def _maxy_changed(self):
+        self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
+
     traits_view = View( Group( ( Item('x',
-                                      #editor=RangeEditor(), # broken?
+                                      editor=RangeEditor(high_name='maxx'),
                                       ),
-                                 Item('y'),
-                                 Item('wingsplit'),
-                                 Item('r1'),
-                                 Item('r2'),
+                                 Item('y',
+                                      editor=RangeEditor(high_name='maxy'),
+                                      ),
+                                 Item('wingsplit',
+                                      editor=RangeEditor(high_name='maxdim'),
+                                      ),
+                                 Item('r1',
+                                      editor=RangeEditor(high_name='r2'),
+                                      ),
+                                 Item('r2',
+                                      editor=RangeEditor(low_name='r1',
+                                                         high_name='maxdim',
+                                                         format='%.1f',
+                                                         label_width=50,
+                                                         ),
+                                      ),
                                  Item('alpha'),
                                  Item('beta'),
                                  Item('gamma'),
@@ -48,8 +71,10 @@ class MaskData(traits.HasTraits):
                         title = 'Mask Parameters',
                         )
 
-    def get_rectangles(self,side,res=5):
-        """return linesegments outlining the pattern (for OpenGL type display)
+    def get_quads(self,side,res=5):
+        """return linesegments outlining the pattern on a given side.
+
+        This can be used to draw the pattern (e.g. wtih OpenGL).
 
         Return a list of linesegments [seg1, seg2, ..., segn]
 
@@ -101,6 +126,7 @@ class StrokelitudeClass:
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
         self.maskdata = MaskData()
+        self.maskdata.on_trait_change( self.on_mask_change )
 
         panel = xrc.XRCCTRL(self.frame,'TRAITS_PANEL')
         sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -111,7 +137,13 @@ class StrokelitudeClass:
         sizer.Add(control, 1, wx.EXPAND)
         control.GetParent().SetMinSize(control.GetMinSize())
 
+        self.on_mask_change() # initialize masks
         self.frame.Fit()
+
+
+    def on_mask_change(self):
+        left_rects = self.maskdata.get_quads('left')
+        right_rects = self.maskdata.get_quads('right')
 
     def get_frame(self):
         """return wxPython frame widget"""
@@ -134,8 +166,8 @@ class StrokelitudeClass:
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.draw_mask_ctrl.IsChecked():
-            draw_linesegs.extend( self.maskdata.get_rectangles('left') )
-            draw_linesegs.extend( self.maskdata.get_rectangles('right') )
+            draw_linesegs.extend( self.maskdata.get_quads('left') )
+            draw_linesegs.extend( self.maskdata.get_quads('right') )
         return draw_points, draw_linesegs
 
     def set_view_flip_LR( self, val ):
@@ -151,7 +183,8 @@ class StrokelitudeClass:
                                      pixel_format=None,
                                      max_width=None,
                                      max_height=None):
-        pass
+        self.maskdata.maxx = max_width
+        self.maskdata.maxy = max_height
 
 if __name__=='__main__':
 
