@@ -80,8 +80,10 @@ class MaskData(traits.HasTraits):
     x = traits.Range(0,640,422)
     y = traits.Range(0,480,292)
 
-    traits_view = View( Group( ( Item('x'),#,editor=RangeEditor()),
-                                 Item('y'),#,editor=RangeEditor()),
+    traits_view = View( Group( ( Item('x',
+                                      #editor=RangeEditor(), # broken for now?
+                                      ),
+                                 Item('y'),
                                  ),
                                orientation = 'horizontal',
                                show_border = False,
