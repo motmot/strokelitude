@@ -9,6 +9,7 @@ import numpy as np
 import cairo
 import scipy.sparse
 import Queue
+import threading
 
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
@@ -26,7 +27,7 @@ RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc")
 RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
-DataReadyEvent = wx.NewEventType() # use to trigger GUI thread action from grab thread
+DataReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
 
@@ -165,6 +166,7 @@ class MaskData(traits.HasTraits):
 
 def quad2imvec(quad,width,height,debug_count=0):
     """convert a quad to an image vector"""
+    print 'ads 10'
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
                                  width, height)
     ctx = cairo.Context(surface)
@@ -180,6 +182,7 @@ def quad2imvec(quad,width,height,debug_count=0):
     for (x,y) in zip(quad[2::2],
                      quad[3::2]):
         ctx.line_to(x,y)
+    print 'ads 20'
     ctx.close_path()
     ctx.set_source_rgb(1,1,1)
     ctx.fill()
@@ -188,20 +191,28 @@ def quad2imvec(quad,width,height,debug_count=0):
         print 'saving',fname
         surface.write_to_png(fname)
     buf = surface.get_data()
+    print 'ads 30'
 
     # Now, convert to numpy
     arr = np.frombuffer(buf, np.uint8)
+    print 'ads 40'
     arr.shape = (height, width, 4)
-    if 1:
+    print 'ads 41'
+    if 0:
         import scipy.misc.pilutil
         fname = 'mask_%05d.png'%debug_count
         print 'saving',fname
         im = scipy.misc.pilutil.toimage(arr)
         im.save(fname)
+    print 'ads 50'
     arr = arr[:,:,0] # only red channel
+    print 'ads 51'
     arr = arr.astype(np.float64)
+    print 'ads 52'
     arr = arr/255.0 # max value should be 1.0
+    print 'ads 60'
     imvec = arr.ravel()
+    print 'ads 70'
     return imvec
 
 class Box(Component):
@@ -216,16 +227,80 @@ class Box(Component):
         gc.fill_path()
         gc.restore_state()
 
+#################
+class RecomputeThread(threading.Thread):
+    def __init__(self, incoming_queue, outgoing_queue, frame):
+        threading.Thread.__init__(self)
+        self.incoming_queue = incoming_queue
+        self.outgoing_queue = outgoing_queue
+        self.frame = frame
+        self.width=20
+        self.height=10
+
+    def set_width(self,value):
+        # XXX make threadsafe
+        self.width=value
+
+    def set_height(self,value):
+        # XXX make threadsafe
+        self.height=value
+
+    def run(self):
+        resolution=30
+        while 1:
+            print 'RecomputeThread waiting forever...'
+            maskdata = self.incoming_queue.get() # wait forever for first datum
+            print 'RecomputeThread got datum'
+
+            while 1:
+                try:
+                    maskdata = self.incoming_queue.get_nowait()
+                except Queue.Empty:
+                    break
+
+            print 'RecomputeThread working'
+
+            count = 0
+            left_quads = maskdata.get_quads('left',res=resolution)
+            right_quads = maskdata.get_quads('right',res=resolution)
+            left_mat = []
+            for quad in left_quads:
+                print 'making imvec...'
+                print 'self.width',self.width
+                print 'self.height',self.height
+                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                print 'OK'
+                left_mat.append( imvec )
+                count+=1
+
+            left_mat = np.array(left_mat)
+            left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
+
+            right_mat = []
+            for quad in right_quads:
+                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                right_mat.append( imvec )
+                count+=1
+
+            right_mat = np.array(right_mat)
+            right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
+
+            self.outgoing_queue.put( (left_mat_sparse,right_mat_sparse) )
+
+#################
+
 
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
     resolution = traits.Int(30)
 
     def _mask_dirty_changed(self):
-        if self.mask_dirty:
-            self.recompute_mask_button.Enable(True)
-        else:
-            self.recompute_mask_button.Enable(False)
+        self.new_maskdata_queue.put( self.maskdata )
+
+        ## if self.mask_dirty:
+        ##     self.recompute_mask_button.Enable(True)
+        ## else:
+        ##     self.recompute_mask_button.Enable(False)
 
     def __init__(self,wx_parent):
         self.wx_parent = wx_parent
@@ -235,6 +310,14 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
         self.vals_queue = Queue.Queue()
+        self.new_maskdata_queue = Queue.Queue()
+        self.incoming_matrices = Queue.Queue()
+
+        self.recompute_thread = RecomputeThread( self.new_maskdata_queue,
+                                                 self.incoming_matrices,
+                                                 self.frame)
+        self.recompute_thread.setDaemon(True)
+        self.recompute_thread.start()
 
         if 1:
             # setup maskdata parameter panel
@@ -292,40 +375,14 @@ class StrokelitudeClass(traits.HasTraits):
         self.frame.Fit()
         self.mask_dirty=True
 
-        self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
-        wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
-                      self.recompute_mask)
+        ## self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
+        ## wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
+        ##               self.recompute_mask)
 
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
 
-    def recompute_mask(self,event):
-        count = 0
-
-        left_quads = self.maskdata.get_quads('left',res=self.resolution)
-        right_quads = self.maskdata.get_quads('right',res=self.resolution)
-
-        left_mat = []
-        for quad in left_quads:
-            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
-            left_mat.append( imvec )
-            count+=1
-
-        left_mat = np.array(left_mat)
-        self.left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
-
-        right_mat = []
-        for quad in right_quads:
-            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
-            right_mat.append( imvec )
-            count+=1
-
-        right_mat = np.array(right_mat)
-        self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
-
-        print left_mat.shape
-        self.mask_dirty=False
-
     def on_mask_change(self):
+        self.new_maskdata_queue.put( self.maskdata )
         self.mask_dirty=True
 
     def get_frame(self):
@@ -356,8 +413,18 @@ class StrokelitudeClass(traits.HasTraits):
                                                           res=self.resolution) )
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
+        lrvals = None
+        while 1:
+            try:
+                lrvals = self.incoming_matrices.get_nowait()
+            except Queue.Empty:
+                break
+
+        if lrvals is not None:
+            self.left_mat_sparse, self.right_mat_sparse = lrvals
+
         enabled = True
-        if enabled and not self.mask_dirty:
+        if enabled and hasattr(self,'left_mat_sparse'):
 
             this_image = np.asarray(buf)
             this_image_flat = this_image.ravel()
@@ -385,7 +452,6 @@ class StrokelitudeClass(traits.HasTraits):
             return
 
         left_vals, right_vals = lrvals
-        print 'plotting',left_vals
         self.left_plot.value.set_data(left_vals)
 
     def set_view_flip_LR( self, val ):
@@ -410,8 +476,22 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata.maxx = self.width
         self.maskdata.maxy = self.height
 
+        self.recompute_thread.set_width( self.width )
+        self.recompute_thread.set_height(  self.height )
+
+        maskdata_copy = MaskData()
+        print 'maskdata_copy.traits()',maskdata_copy.trait_names()
+        for n in maskdata_copy.trait_names():
+            if n in ['trait_added','trait_modified']:
+                continue
+            val = getattr(self.maskdata,n)
+            setattr(maskdata_copy,n,val)
+
+        self.new_maskdata_queue.put( maskdata_copy ) # force recompute, needs copy.
+
 if __name__=='__main__':
 
     data = MaskData()
     data.configure_traits()
+
 
