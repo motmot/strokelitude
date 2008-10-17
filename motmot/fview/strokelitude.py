@@ -163,6 +163,26 @@ class MaskData(traits.HasTraits):
 
         return linesegs
 
+    def get_span(self,side,idx):
+
+        if side=='left':
+            all_theta = np.linspace(alpha,beta,res+1)
+            wingsplit_trans = np.array([[0.0],[self.wingsplit]])
+        elif side=='right':
+            all_theta = np.linspace(-alpha,-beta,res+1)
+            wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
+        rotation,translation = self._get_rotation_translation()
+
+        linesegs = []
+
+        theta = all_theta[idx]
+        verts = np.array( [[ 0, 1000.0*np.cos(theta)],
+                           [ 0, 1000.0*np.sin(theta)]] )
+        verts = verts + wingsplit_trans
+        verts = np.dot(rotation, verts) + translation
+        linesegs.append( verts.T.ravel() )
+        return linesegs
+
 def quad2imvec(quad,width,height,debug_count=0):
     """convert a quad to an image vector"""
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
@@ -345,6 +365,21 @@ class StrokelitudeClass(traits.HasTraits):
 
             left_vals  = self.left_mat_sparse  * this_image_flat
             right_vals = self.right_mat_sparse * this_image_flat
+
+            for side in ('left','right'):
+                if side=='left':
+                    vals = left_vals
+                else:
+                    vals = right_vals
+
+                min_val = vals.min()
+                mid_val = (min_val + vals.max())/2
+                if min_val==mid_val:
+                    continue
+                first_idx = np.nonzero(vals>=mid_val)[0]
+
+                draw_linesegs.extend(
+                    self.maskdata.get_span(side,first_idx))
 
             self.vals_queue.put( (left_vals, right_vals) )
 
