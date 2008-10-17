@@ -6,11 +6,13 @@ import wx
 import wx.xrc as xrc
 
 import numpy as np
+import cairo
+import scipy.sparse
+import Queue
+
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
-import cairo
-import scipy.sparse
 
 from enthought.enable2.api import Component, Container
 from enthought.enable2.wx_backend.api import Window
@@ -24,6 +26,8 @@ RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc")
 RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
+DataReadyEvent = wx.NewEventType() # use to trigger GUI thread action from grab thread
+
 D2R = np.pi/180.0
 
 class MaskData(traits.HasTraits):
@@ -33,7 +37,7 @@ class MaskData(traits.HasTraits):
     r1 = traits.Float(100.0)
     r2 = traits.Float(151.0)
 
-    alpha = traits.Range(0.0, 180.0, 52.0)
+    alpha = traits.Range(0.0, 180.0, 45.0)
     beta = traits.Range(0.0, 180.0, 82.0)
     gamma = traits.Range(0.0, 360.0, 206.0)
 
@@ -215,7 +219,7 @@ class Box(Component):
 
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
-    resolution = traits.Int(20)
+    resolution = traits.Int(30)
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
@@ -224,10 +228,13 @@ class StrokelitudeClass(traits.HasTraits):
             self.recompute_mask_button.Enable(False)
 
     def __init__(self,wx_parent):
+        self.wx_parent = wx_parent
+
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
         self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
+        self.vals_queue = Queue.Queue()
 
         if 1:
             # setup maskdata parameter panel
@@ -289,10 +296,7 @@ class StrokelitudeClass(traits.HasTraits):
         wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
                       self.recompute_mask)
 
-        ## ID_Timer2 = wx.NewId()
-        ## self.timer2 = wx.Timer(self.frame, ID_Timer2)
-        ## wx.EVT_TIMER(self, ID_Timer2, self.OnTimer2)
-        ## self.timer2.Start(100)
+        self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
 
     def recompute_mask(self,event):
         count = 0
@@ -345,6 +349,7 @@ class StrokelitudeClass(traits.HasTraits):
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.draw_mask_ctrl.IsChecked():
+            # XXX this is naughty -- it's not threasafe.
             draw_linesegs.extend( self.maskdata.get_quads('left',
                                                           res=self.resolution) )
             draw_linesegs.extend( self.maskdata.get_quads('right',
@@ -359,11 +364,29 @@ class StrokelitudeClass(traits.HasTraits):
 
             left_vals  = self.left_mat_sparse  * this_image_flat
             right_vals = self.right_mat_sparse * this_image_flat
-            #print 'left,right',left_vals,right_vals
 
-            self.left_plot.value.set_data(left_vals)
+            self.vals_queue.put( (left_vals, right_vals) )
+
+            event = wx.CommandEvent(DataReadyEvent)
+            event.SetEventObject(self.frame)
+            wx.PostEvent(self.frame, event) # triggers call to self.OnDataReady
 
         return draw_points, draw_linesegs
+
+    def OnDataReady(self, event):
+        lrvals = None
+        while 1:
+            try:
+                lrvals = self.vals_queue.get_nowait()
+            except Queue.Empty:
+                break
+        if lrvals is None:
+            print 'no plot'
+            return
+
+        left_vals, right_vals = lrvals
+        print 'plotting',left_vals
+        self.left_plot.value.set_data(left_vals)
 
     def set_view_flip_LR( self, val ):
         pass
