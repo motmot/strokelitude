@@ -31,14 +31,14 @@ DataReadyEvent = wx.NewEventType()
 D2R = np.pi/180.0
 
 class MaskData(traits.HasTraits):
-    x = traits.Float(422.0)
-    y = traits.Float(292.0)
-    wingsplit = traits.Float(20.0)
-    r1 = traits.Float(100.0)
-    r2 = traits.Float(151.0)
+    x = traits.Float(401.0)
+    y = traits.Float(273.5)
+    wingsplit = traits.Float(70.3)
+    r1 = traits.Float(22.0)
+    r2 = traits.Float(80.0)
 
-    alpha = traits.Range(0.0, 180.0, 45.0)
-    beta = traits.Range(0.0, 180.0, 82.0)
+    alpha = traits.Range(0.0, 180.0, 14.0)
+    beta = traits.Range(0.0, 180.0, 87.0)
     gamma = traits.Range(0.0, 360.0, 206.0)
 
     # these are just necesary for establishing limits in the view:
@@ -118,7 +118,7 @@ class MaskData(traits.HasTraits):
             linesegs.append( verts.T.ravel() )
         return linesegs
 
-    def get_quads(self,side,res=5):
+    def get_quads(self,side,res):
         """return linesegments outlining the pattern on a given side.
 
         This can be used to draw the pattern (e.g. wtih OpenGL).
@@ -134,16 +134,7 @@ class MaskData(traits.HasTraits):
         # "Mesa DRI Intel(R) 946GZ 4.1.3002 x86/MMX/SSE2, OpenGL 1.4
         # Mesa 7.0.3-rc2") - ADS 20081015
 
-        alpha = self.alpha*D2R
-        beta = self.beta*D2R
-
-        if side=='left':
-            all_theta = np.linspace(alpha,beta,res+1)
-            wingsplit_trans = np.array([[0.0],[self.wingsplit]])
-        elif side=='right':
-            all_theta = np.linspace(-alpha,-beta,res+1)
-            wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
-
+        all_theta, wingsplit_trans = self._get_atwt(side,res)
         rotation,translation = self._get_rotation_translation()
 
         linesegs = []
@@ -163,7 +154,9 @@ class MaskData(traits.HasTraits):
 
         return linesegs
 
-    def get_span(self,side,idx):
+    def _get_atwt(self,side,res):
+        alpha = self.alpha*D2R
+        beta = self.beta*D2R
 
         if side=='left':
             all_theta = np.linspace(alpha,beta,res+1)
@@ -171,6 +164,10 @@ class MaskData(traits.HasTraits):
         elif side=='right':
             all_theta = np.linspace(-alpha,-beta,res+1)
             wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
+        return all_theta, wingsplit_trans
+
+    def get_span(self,side,idx,res):
+        all_theta, wingsplit_trans = self._get_atwt(side,res)
         rotation,translation = self._get_rotation_translation()
 
         linesegs = []
@@ -303,8 +300,8 @@ class StrokelitudeClass(traits.HasTraits):
     def recompute_mask(self,event):
         count = 0
 
-        left_quads = self.maskdata.get_quads('left',res=self.resolution)
-        right_quads = self.maskdata.get_quads('right',res=self.resolution)
+        left_quads = self.maskdata.get_quads('left',self.resolution)
+        right_quads = self.maskdata.get_quads('right',self.resolution)
 
         left_mat = []
         for quad in left_quads:
@@ -352,9 +349,9 @@ class StrokelitudeClass(traits.HasTraits):
         if self.draw_mask_ctrl.IsChecked():
             # XXX this is naughty -- it's not threasafe.
             draw_linesegs.extend( self.maskdata.get_quads('left',
-                                                          res=self.resolution) )
+                                                          self.resolution) )
             draw_linesegs.extend( self.maskdata.get_quads('right',
-                                                          res=self.resolution) )
+                                                          self.resolution) )
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
         enabled = True
@@ -376,10 +373,12 @@ class StrokelitudeClass(traits.HasTraits):
                 mid_val = (min_val + vals.max())/2
                 if min_val==mid_val:
                     continue
-                first_idx = np.nonzero(vals>=mid_val)[0]
+                all_idxs = np.nonzero(vals>=mid_val)[0]
+                assert len(all_idxs) > 0
+                first_idx = all_idxs[0]
 
                 draw_linesegs.extend(
-                    self.maskdata.get_span(side,first_idx))
+                    self.maskdata.get_span(side,first_idx,self.resolution))
 
             self.vals_queue.put( (left_vals, right_vals) )
 
