@@ -199,6 +199,19 @@ def quad2imvec(quad,width,height,debug_count=0):
     imvec = arr.ravel()
     return imvec
 
+class Box(Component):
+    resizable = ""
+
+    def _draw_mainlayer(self, gc, view_bounds=None, mode="default"):
+        gc.save_state()
+        gc.set_fill_color((1.0, 0.0, 0.0, 1.0))
+        dx, dy = self.bounds
+        x, y = self.position
+        gc.rect(x, y, dx, dy)
+        gc.fill_path()
+        gc.restore_state()
+
+
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
 
@@ -227,7 +240,8 @@ class StrokelitudeClass(traits.HasTraits):
             control.GetParent().SetMinSize(control.GetMinSize())
 
         if 1:
-            component = Component()
+            box = Box(bounds=[100.0, 100.0], position=[50.0, 50.0])
+            component = box
 
             panel = xrc.XRCCTRL(self.frame,'LIVEVIEW_PANEL')
             sizer = wx.BoxSizer(wx.HORIZONTAL)
