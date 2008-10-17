@@ -12,6 +12,9 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
 import cairo
 import scipy.sparse
 
+from enthought.enable2.api import Component, Container
+from enthought.enable2.wx_backend.api import Window
+
 #from enthought.chaco2 import api as chaco2
 
 # trigger extraction
@@ -196,7 +199,14 @@ def quad2imvec(quad,width,height,debug_count=0):
     imvec = arr.ravel()
     return imvec
 
-class StrokelitudeClass:
+class StrokelitudeClass(traits.HasTraits):
+    mask_dirty = traits.Bool(True) # True the mask parameters changed
+
+    def _mask_dirty_changed(self):
+        if self.mask_dirty:
+            self.recompute_mask_button.Enable(True)
+        else:
+            self.recompute_mask_button.Enable(False)
 
     def __init__(self,wx_parent):
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
@@ -204,23 +214,46 @@ class StrokelitudeClass:
         self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
 
-        panel = xrc.XRCCTRL(self.frame,'TRAITS_PANEL')
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        if 1:
+            # setup maskdata parameter panel
+            panel = xrc.XRCCTRL(self.frame,'MASKDATA_PARAMS_PANEL')
+            sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        control = self.maskdata.edit_traits( parent=panel,
-                                             kind='subpanel',
-                                             ).control
-        sizer.Add(control, 1, wx.EXPAND)
-        control.GetParent().SetMinSize(control.GetMinSize())
+            control = self.maskdata.edit_traits( parent=panel,
+                                                 kind='subpanel',
+                                                 ).control
+            sizer.Add(control, 1, wx.EXPAND)
+            panel.SetSizer( sizer )
+            control.GetParent().SetMinSize(control.GetMinSize())
+
+        if 1:
+            component = Component()
+
+            panel = xrc.XRCCTRL(self.frame,'LIVEVIEW_PANEL')
+            sizer = wx.BoxSizer(wx.HORIZONTAL)
+            self.enable_window = Window( panel, -1, component = component )
+            control = self.enable_window.control
+            sizer.Add(control, 1, wx.EXPAND)
+            panel.SetSizer( sizer )
+            control.GetParent().SetMinSize(control.GetMinSize())
 
         self.cam_id = None
         self.width = 20
         self.height = 10
 
-        self.on_mask_change() # initialize masks
         self.frame.Fit()
+        self.mask_dirty=True
 
-    def on_mask_change(self):
+        self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
+        wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
+                      self.recompute_mask)
+
+        ## ID_Timer2 = wx.NewId()
+        ## self.timer2 = wx.Timer(self.frame, ID_Timer2)
+        ## wx.EVT_TIMER(self, ID_Timer2, self.OnTimer2)
+        ## self.timer2.Start(100)
+
+    def recompute_mask(self,event):
         count = 0
 
         left_quads = self.maskdata.get_quads('left')
@@ -245,6 +278,10 @@ class StrokelitudeClass:
         self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
 
         print left_mat.shape
+        self.mask_dirty=False
+
+    def on_mask_change(self):
+        self.mask_dirty=True
 
     def get_frame(self):
         """return wxPython frame widget"""
@@ -271,7 +308,9 @@ class StrokelitudeClass:
             draw_linesegs.extend( self.maskdata.get_quads('right') )
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
-        if 1:
+        enabled = True
+        if enabled and not self.mask_dirty:
+
             this_image = np.asarray(buf)
             this_image_flat = this_image.ravel()
 
