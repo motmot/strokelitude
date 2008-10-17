@@ -10,6 +10,7 @@ import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 import cairo
+import scipy.sparse
 
 #from enthought.chaco2 import api as chaco2
 
@@ -154,6 +155,47 @@ class MaskData(traits.HasTraits):
 
         return linesegs
 
+def quad2imvec(quad,width,height,debug_count=0):
+    """convert a quad to an image vector"""
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
+                                 width, height)
+    ctx = cairo.Context(surface)
+    ctx.set_source_rgb(0,0,0)
+
+    ctx.set_operator(cairo.OPERATOR_SOURCE)
+    ctx.paint()
+
+    x0=quad[0]
+    y0=quad[1]
+    ctx.move_to(x0,y0)
+
+    for (x,y) in zip(quad[2::2],
+                     quad[3::2]):
+        ctx.line_to(x,y)
+    ctx.close_path()
+    ctx.set_source_rgb(1,1,1)
+    ctx.fill()
+    if 0:
+        fname = 'poly_left_%05d.png'%debug_count
+        print 'saving',fname
+        surface.write_to_png(fname)
+    buf = surface.get_data()
+
+    # Now, convert to numpy
+    arr = np.frombuffer(buf, np.uint8)
+    arr.shape = (height, width, 4)
+    if 1:
+        import scipy.misc.pilutil
+        fname = 'mask_%05d.png'%debug_count
+        print 'saving',fname
+        im = scipy.misc.pilutil.toimage(arr)
+        im.save(fname)
+    arr = arr[:,:,0] # only red channel
+    arr = arr.astype(np.float64)
+    arr = arr/255.0 # max value should be 1.0
+    imvec = arr.ravel()
+    return imvec
+
 class StrokelitudeClass:
 
     def __init__(self,wx_parent):
@@ -171,16 +213,38 @@ class StrokelitudeClass:
         sizer.Add(control, 1, wx.EXPAND)
         control.GetParent().SetMinSize(control.GetMinSize())
 
+        self.cam_id = None
+        self.width = 20
+        self.height = 10
+
         self.on_mask_change() # initialize masks
         self.frame.Fit()
 
-
     def on_mask_change(self):
+        count = 0
+
         left_quads = self.maskdata.get_quads('left')
         right_quads = self.maskdata.get_quads('right')
 
-        ## for quad in left_quads:
-        ##     print quad
+        left_mat = []
+        for quad in left_quads:
+            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+            left_mat.append( imvec )
+            count+=1
+
+        left_mat = np.array(left_mat)
+        self.left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
+
+        right_mat = []
+        for quad in right_quads:
+            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+            right_mat.append( imvec )
+            count+=1
+
+        right_mat = np.array(right_mat)
+        self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
+
+        print left_mat.shape
 
     def get_frame(self):
         """return wxPython frame widget"""
@@ -206,6 +270,15 @@ class StrokelitudeClass:
             draw_linesegs.extend( self.maskdata.get_quads('left') )
             draw_linesegs.extend( self.maskdata.get_quads('right') )
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
+
+        if 1:
+            this_image = np.asarray(buf)
+            this_image_flat = this_image.ravel()
+
+            left_vals  = self.left_mat_sparse  * this_image_flat
+            right_vals = self.right_mat_sparse * this_image_flat
+            #print 'left,right',left_vals,right_vals
+
         return draw_points, draw_linesegs
 
     def set_view_flip_LR( self, val ):
@@ -221,8 +294,14 @@ class StrokelitudeClass:
                                      pixel_format=None,
                                      max_width=None,
                                      max_height=None):
-        self.maskdata.maxx = max_width
-        self.maskdata.maxy = max_height
+        if self.cam_id is not None:
+            raise NotImplementedError('only a single camera is supported.')
+        self.cam_id = cam_id
+
+        self.width = max_width
+        self.height = max_height
+        self.maskdata.maxx = self.width
+        self.maskdata.maxy = self.height
 
 if __name__=='__main__':
 
