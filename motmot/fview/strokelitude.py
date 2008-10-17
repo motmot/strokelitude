@@ -14,6 +14,8 @@ import scipy.sparse
 
 from enthought.enable2.api import Component, Container
 from enthought.enable2.wx_backend.api import Window
+from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, LinePlot, LinearMapper
+from enthought.chaco2.api import create_line_plot, add_default_axes, add_default_grids
 
 #from enthought.chaco2 import api as chaco2
 
@@ -23,7 +25,6 @@ RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
 D2R = np.pi/180.0
-
 
 class MaskData(traits.HasTraits):
     x = traits.Float(422.0)
@@ -214,6 +215,7 @@ class Box(Component):
 
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
+    resolution = traits.Int(20)
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
@@ -240,8 +242,33 @@ class StrokelitudeClass(traits.HasTraits):
             control.GetParent().SetMinSize(control.GetMinSize())
 
         if 1:
-            box = Box(bounds=[100.0, 100.0], position=[50.0, 50.0])
-            component = box
+            if 0:
+                box = Box(bounds=[100.0, 100.0], position=[50.0, 50.0])
+                component = box
+            else:
+                if 1:
+                    x=np.arange(self.resolution)
+                    y=(x-self.resolution/2.0)**2
+                    plot = create_line_plot((x,y), color="red", width=2.0)
+                    value_range = plot.value_mapper.range
+                    index_range = plot.index_mapper.range
+
+                    plot.padding = 10
+                    plot.fill_padding = True
+                    plot.bgcolor = "white"
+
+                    left, bottom = add_default_axes(plot)
+                    hgrid, vgrid = add_default_grids(plot)
+                    bottom.tick_interval = 2.0
+                    vgrid.grid_interval = 2.0
+
+                    component = plot
+                    self.left_plot=plot
+                else:
+
+                    left_view = DataView(border_visible = True)
+                    component = left_view
+
 
             panel = xrc.XRCCTRL(self.frame,'LIVEVIEW_PANEL')
             sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -270,8 +297,8 @@ class StrokelitudeClass(traits.HasTraits):
     def recompute_mask(self,event):
         count = 0
 
-        left_quads = self.maskdata.get_quads('left')
-        right_quads = self.maskdata.get_quads('right')
+        left_quads = self.maskdata.get_quads('left',res=self.resolution)
+        right_quads = self.maskdata.get_quads('right',res=self.resolution)
 
         left_mat = []
         for quad in left_quads:
@@ -318,8 +345,10 @@ class StrokelitudeClass(traits.HasTraits):
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.draw_mask_ctrl.IsChecked():
-            draw_linesegs.extend( self.maskdata.get_quads('left') )
-            draw_linesegs.extend( self.maskdata.get_quads('right') )
+            draw_linesegs.extend( self.maskdata.get_quads('left',
+                                                          res=self.resolution) )
+            draw_linesegs.extend( self.maskdata.get_quads('right',
+                                                          res=self.resolution) )
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
         enabled = True
@@ -331,6 +360,8 @@ class StrokelitudeClass(traits.HasTraits):
             left_vals  = self.left_mat_sparse  * this_image_flat
             right_vals = self.right_mat_sparse * this_image_flat
             #print 'left,right',left_vals,right_vals
+
+            self.left_plot.value.set_data(left_vals)
 
         return draw_points, draw_linesegs
 
