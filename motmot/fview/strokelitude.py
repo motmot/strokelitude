@@ -1,9 +1,10 @@
-from __future__ import division
+from __future__ import division, with_statement
 
 import pkg_resources
 
 import wx
 import wx.xrc as xrc
+import warnings, time, threading
 
 import numpy as np
 import cairo
@@ -18,8 +19,6 @@ from enthought.enable2.api import Component, Container
 from enthought.enable2.wx_backend.api import Window
 from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, LinePlot, LinearMapper
 from enthought.chaco2.api import create_line_plot, add_default_axes, add_default_grids
-
-#from enthought.chaco2 import api as chaco2
 
 # trigger extraction
 RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc")
@@ -258,6 +257,28 @@ def quad2imvec(quad,width,height,debug_count=0):
     imvec = arr.ravel()
     return imvec
 
+def resample_sparse( orig, orig_h, orig_w, offset, new_h, new_w ):
+    print 'resampling'
+    orig_dense = orig.todense()
+    print 'type(orig_dense)',type(orig_dense)
+    orig_dense = np.asarray(orig_dense) # convert to np.array (from matrix)
+    print 'type(orig_dense)',type(orig_dense)
+    print 'orig_dense.shape',orig_dense.shape
+
+    new_dense = []
+    xoff,yoff = offset
+    for orig_row in orig_dense:
+        orig_mat = np.reshape( orig_row, (orig_h,orig_w) )
+        print 'orig_mat.shape',orig_mat.shape
+        resampled_mat = orig_mat[ yoff:(yoff+new_h), xoff:(xoff+new_w) ]
+        print 'resampled_mat.shape',resampled_mat.shape
+        imvec = resampled_mat.ravel()
+        print 'imvec.shape',imvec.shape
+        new_dense.append( imvec )
+    new_dense = np.array(new_dense)
+    result = scipy.sparse.csc_matrix(new_dense)
+    return result
+
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
 
@@ -275,6 +296,8 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
         self.vals_queue = Queue.Queue()
+
+        self.recomputing_lock = threading.Lock()
 
         if 1:
             # setup maskdata parameter panel
@@ -333,30 +356,34 @@ class StrokelitudeClass(traits.HasTraits):
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
 
     def recompute_mask(self,event):
-        count = 0
+        with self.recomputing_lock:
+            count = 0
 
-        left_quads = self.maskdata.get_quads('left')
-        right_quads = self.maskdata.get_quads('right')
+            left_quads = self.maskdata.get_quads('left')
+            right_quads = self.maskdata.get_quads('right')
 
-        left_mat = []
-        for quad in left_quads:
-            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
-            left_mat.append( imvec )
-            count+=1
+            left_mat = []
+            for quad in left_quads:
+                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                left_mat.append( imvec )
+                count+=1
 
-        left_mat = np.array(left_mat)
-        self.left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
+            left_mat = np.array(left_mat)
+            self.left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
 
-        right_mat = []
-        for quad in right_quads:
-            imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
-            right_mat.append( imvec )
-            count+=1
+            right_mat = []
+            for quad in right_quads:
+                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                right_mat.append( imvec )
+                count+=1
 
-        right_mat = np.array(right_mat)
-        self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
+            right_mat = np.array(right_mat)
+            self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
 
-        self.mask_dirty=False
+            self._sparse_roi_cache = None # clear cache
+            self._recomputed_timestamp = time.time() # use as a hash value
+
+            self.mask_dirty=False
 
     def on_mask_change(self):
         self.mask_dirty=True
@@ -381,45 +408,95 @@ class StrokelitudeClass(traits.HasTraits):
         draw_points = [] #  [ (x,y) ]
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
-        if self.draw_mask_ctrl.IsChecked():
-            # XXX this is naughty -- it's not threasafe.
-            draw_linesegs.extend( self.maskdata.get_quads('left'))
-            draw_linesegs.extend( self.maskdata.get_quads('right'))
-            draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
+        have_lock = self.recomputing_lock.acquire(False) # don't block
+        if not have_lock:
+            return draw_points, draw_linesegs
+        try:
+            if self.draw_mask_ctrl.IsChecked():
+                # XXX this is naughty -- it's not threasafe.
+                # concatenate lists
+                extra = ( self.maskdata.get_quads('left') +
+                          self.maskdata.get_quads('right') +
+                          self.maskdata.get_extra_linesegs() )
 
-        # XXX naughty to cross thread boundary to get enabled_box value, too
-        if self.enabled_box.GetValue() and not self.mask_dirty:
+                draw_linesegs.extend( extra )
 
-            this_image = np.asarray(buf)
-            this_image_flat = this_image.ravel()
 
-            left_vals  = self.left_mat_sparse  * this_image_flat
-            right_vals = self.right_mat_sparse * this_image_flat
+            # XXX naughty to cross thread boundary to get enabled_box value, too
+            if self.enabled_box.GetValue() and not self.mask_dirty:
 
-            for side in ('left','right'):
-                if side=='left':
-                    vals = left_vals
+                this_image = np.asarray(buf)
+                h,w = this_image.shape
+                if not (self.width==w and self.height==h):
+                    warnings.warn('no ROI support for calculating stroke amplitude')
+
+                    tmp = self._sparse_roi_cache
+
+                    cache_ok = False
+                    if tmp is not None:
+                        (old_timestamp, old_offset, old_wh, left, right) = tmp
+                        if (old_timestamp == self._recomputed_timestamp and
+                            old_offset == buf_offset and
+                            old_wh == (w,h) ):
+
+                            left_mat_sparse = left
+                            right_mat_sparse = right
+                            cache_ok = True
+                    if not cache_ok:
+                        left_mat_sparse = resample_sparse( self.left_mat_sparse,
+                                                           self.height,
+                                                           self.width,
+                                                           buf_offset,
+                                                           h,w )
+                        right_mat_sparse = resample_sparse( self.right_mat_sparse,
+                                                            self.height,
+                                                            self.width,
+                                                            buf_offset,
+                                                            h,w )
+                        self._sparse_roi_cache = ( self._recomputed_timestamp,
+                                                   buf_offset,
+                                                   (w,h),
+                                                   left_mat_sparse,
+                                                   right_mat_sparse )
+
                 else:
-                    vals = right_vals
+                    left_mat_sparse = self.left_mat_sparse
+                    right_mat_sparse = self.right_mat_sparse
 
-                min_val = vals.min()
-                mid_val = (min_val + vals.max())/2
-                if min_val==mid_val:
-                    continue
-                all_idxs = np.nonzero(vals>=mid_val)[0]
-                assert len(all_idxs) > 0
-                first_idx = all_idxs[0]
+                this_image_flat = this_image.ravel()
 
-                angle_radians = self.maskdata.index2angle(side,
-                                                          first_idx)
-                draw_linesegs.extend(
-                    self.maskdata.get_span_lineseg(side,angle_radians))
+                left_vals  = left_mat_sparse  * this_image_flat
+                right_vals = right_mat_sparse * this_image_flat
 
-            self.vals_queue.put( (left_vals, right_vals) )
+                for side in ('left','right'):
+                    if side=='left':
+                        vals = left_vals
+                    else:
+                        vals = right_vals
 
-            event = wx.CommandEvent(DataReadyEvent)
-            event.SetEventObject(self.frame)
-            wx.PostEvent(self.frame, event) # triggers call to self.OnDataReady
+                    min_val = vals.min()
+                    mid_val = (min_val + vals.max())/2
+                    if min_val==mid_val:
+                        continue
+                    all_idxs = np.nonzero(vals>=mid_val)[0]
+                    assert len(all_idxs) > 0
+                    first_idx = all_idxs[0]
+
+                    #latency_sec = time.time()-timestamp
+                    #print 'msec % 5.1f'%(latency_sec*1000.0,)
+
+                    angle_radians = self.maskdata.index2angle(side,
+                                                              first_idx)
+                    draw_linesegs.extend(
+                        self.maskdata.get_span_lineseg(side,angle_radians))
+
+                self.vals_queue.put( (left_vals, right_vals) )
+
+                event = wx.CommandEvent(DataReadyEvent)
+                event.SetEventObject(self.frame)
+                wx.PostEvent(self.frame, event) # triggers call to self.OnDataReady
+        finally:
+            self.recomputing_lock.release()
 
         return draw_points, draw_linesegs
 
