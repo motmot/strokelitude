@@ -31,15 +31,20 @@ DataReadyEvent = wx.NewEventType()
 D2R = np.pi/180.0
 
 class MaskData(traits.HasTraits):
+    # lengths, in pixels
     x = traits.Float(401.0)
     y = traits.Float(273.5)
     wingsplit = traits.Float(70.3)
     r1 = traits.Float(22.0)
     r2 = traits.Float(80.0)
 
+    # angles, in degrees
     alpha = traits.Range(0.0, 180.0, 14.0)
     beta = traits.Range(0.0, 180.0, 87.0)
     gamma = traits.Range(0.0, 360.0, 206.0)
+
+    # number of angular bins
+    nbins = traits.Int(30)
 
     # these are just necesary for establishing limits in the view:
     maxx = traits.Float(699.9)
@@ -50,6 +55,43 @@ class MaskData(traits.HasTraits):
         self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
     def _maxy_changed(self):
         self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
+
+    def _wingsplit_changed(self):
+        self._wingsplit_translation['left'] = np.array([[0.0],[self.wingsplit]])
+        self._wingsplit_translation['right'] = np.array([[0.0],[-self.wingsplit]])
+
+    def _gamma_changed(self):
+        gamma = self.gamma*D2R
+        self._rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
+                                   [ np.sin( gamma ), np.cos(gamma)]])
+
+    def _xy_changed(self):
+        self._translation = np.array( [[self.x],
+                                       [self.y]],
+                                      dtype=np.float64 )
+
+    # If either self.x or self.y changed, call _xy_changed()
+    _x_changed = _xy_changed
+    _y_changed = _xy_changed
+
+    def _alpha_beta_nbins_changed(self):
+        alpha = self.alpha*D2R
+        beta = self.beta*D2R
+        self._all_theta['left'] = np.linspace(alpha,beta,self.nbins+1)
+        self._all_theta['right'] = np.linspace(-alpha,-beta,self.nbins+1)
+
+    # If any of alpha, beta or nbins changed
+    _alpha_changed = _alpha_beta_nbins_changed
+    _beta_changed = _alpha_beta_nbins_changed
+    _nbins_changed = _alpha_beta_nbins_changed
+
+    def __init__(self):
+        self._wingsplit_translation = {}
+        self._all_theta = {}
+        self._wingsplit_changed()
+        self._gamma_changed()
+        self._xy_changed()
+        self._alpha_beta_nbins_changed()
 
     traits_view = View( Group( ( Item('x',
                                       editor=RangeEditor(high_name='maxx',
@@ -92,33 +134,24 @@ class MaskData(traits.HasTraits):
                         title = 'Mask Parameters',
                         )
 
-    def _get_rotation_translation(self):
-        gamma = self.gamma*D2R
-        rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
-                             [ np.sin( gamma ), np.cos(gamma)]])
-        translation = np.array( [[self.x],
-                                 [self.y]], dtype=np.float64 )
-        return rotation,translation
-
     def get_extra_linesegs(self):
         """return linesegments that contextualize parameters"""
         linesegs = []
-        rotation,translation = self._get_rotation_translation()
         if 1:
             # longitudinal axis (along fly's x coord)
             verts = np.array([[-100,100],
                               [0,     0]],dtype=np.float)
-            verts = np.dot(rotation, verts) + translation
+            verts = np.dot(self._rotation, verts) + self._translation
             linesegs.append( verts.T.ravel() )
         if 1:
             # transverse axis (along fly's y coord)
             verts = np.array([[0,0],
                               [-10,10]],dtype=np.float)
-            verts = np.dot(rotation, verts) + translation
+            verts = np.dot(self._rotation, verts) + self._translation
             linesegs.append( verts.T.ravel() )
         return linesegs
 
-    def get_quads(self,side,res):
+    def get_quads(self,side):
         """return linesegments outlining the pattern on a given side.
 
         This can be used to draw the pattern (e.g. wtih OpenGL).
@@ -134,11 +167,10 @@ class MaskData(traits.HasTraits):
         # "Mesa DRI Intel(R) 946GZ 4.1.3002 x86/MMX/SSE2, OpenGL 1.4
         # Mesa 7.0.3-rc2") - ADS 20081015
 
-        all_theta, wingsplit_trans = self._get_atwt(side,res)
-        rotation,translation = self._get_rotation_translation()
+        all_theta = self._all_theta[side]
 
         linesegs = []
-        for i in range(res):
+        for i in range(self.nbins):
             theta = all_theta[i:(i+2)]
             # inner radius
             inner = np.array([self.r1*np.cos(theta),
@@ -147,36 +179,26 @@ class MaskData(traits.HasTraits):
             outer = np.array([self.r2*np.cos(theta[::-1]),
                               self.r2*np.sin(theta[::-1])])
 
-            wing_verts = np.hstack(( inner, outer, inner[:,np.newaxis,0] ))+wingsplit_trans
+            wing_verts =  np.hstack(( inner, outer, inner[:,np.newaxis,0] ))
+            wing_verts += self._wingsplit_translation[side]
 
-            wing_verts = np.dot(rotation, wing_verts) + translation
+            wing_verts = np.dot(self._rotation, wing_verts) + self._translation
             linesegs.append( wing_verts.T.ravel() )
 
         return linesegs
 
-    def _get_atwt(self,side,res):
-        alpha = self.alpha*D2R
-        beta = self.beta*D2R
+    def index2angle(self,side,idx):
+        """convert index to angle (in radians)"""
+        return self._all_theta[side][idx]
 
-        if side=='left':
-            all_theta = np.linspace(alpha,beta,res+1)
-            wingsplit_trans = np.array([[0.0],[self.wingsplit]])
-        elif side=='right':
-            all_theta = np.linspace(-alpha,-beta,res+1)
-            wingsplit_trans = np.array([[0.0],[-self.wingsplit]])
-        return all_theta, wingsplit_trans
-
-    def get_span(self,side,idx,res):
-        all_theta, wingsplit_trans = self._get_atwt(side,res)
-        rotation,translation = self._get_rotation_translation()
-
+    def get_span_lineseg(self,side,theta):
+        """draw line on side at angle theta (in radians)"""
         linesegs = []
 
-        theta = all_theta[idx]
         verts = np.array( [[ 0, 1000.0*np.cos(theta)],
                            [ 0, 1000.0*np.sin(theta)]] )
-        verts = verts + wingsplit_trans
-        verts = np.dot(rotation, verts) + translation
+        verts = verts + self._wingsplit_translation[side]
+        verts = np.dot(self._rotation, verts) + self._translation
         linesegs.append( verts.T.ravel() )
         return linesegs
 
@@ -223,7 +245,6 @@ def quad2imvec(quad,width,height,debug_count=0):
 
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
-    resolution = traits.Int(30)
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
@@ -254,8 +275,8 @@ class StrokelitudeClass(traits.HasTraits):
 
             for side in ['left','right']:
 
-                x=np.arange(self.resolution)
-                y=(x-self.resolution/2.0)**2
+                x=np.arange(self.maskdata.nbins,dtype=np.float64)
+                y=np.zeros_like(x)
                 plot = create_line_plot((x,y), color="red", width=2.0)
                 value_range = plot.value_mapper.range
                 index_range = plot.index_mapper.range
@@ -300,8 +321,8 @@ class StrokelitudeClass(traits.HasTraits):
     def recompute_mask(self,event):
         count = 0
 
-        left_quads = self.maskdata.get_quads('left',self.resolution)
-        right_quads = self.maskdata.get_quads('right',self.resolution)
+        left_quads = self.maskdata.get_quads('left')
+        right_quads = self.maskdata.get_quads('right')
 
         left_mat = []
         for quad in left_quads:
@@ -348,10 +369,8 @@ class StrokelitudeClass(traits.HasTraits):
 
         if self.draw_mask_ctrl.IsChecked():
             # XXX this is naughty -- it's not threasafe.
-            draw_linesegs.extend( self.maskdata.get_quads('left',
-                                                          self.resolution) )
-            draw_linesegs.extend( self.maskdata.get_quads('right',
-                                                          self.resolution) )
+            draw_linesegs.extend( self.maskdata.get_quads('left'))
+            draw_linesegs.extend( self.maskdata.get_quads('right'))
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
         enabled = True
@@ -377,8 +396,10 @@ class StrokelitudeClass(traits.HasTraits):
                 assert len(all_idxs) > 0
                 first_idx = all_idxs[0]
 
+                angle_radians = self.maskdata.index2angle(side,
+                                                          first_idx)
                 draw_linesegs.extend(
-                    self.maskdata.get_span(side,first_idx,self.resolution))
+                    self.maskdata.get_span_lineseg(side,angle_radians))
 
             self.vals_queue.put( (left_vals, right_vals) )
 
