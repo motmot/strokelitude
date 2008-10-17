@@ -235,7 +235,8 @@ class StrokelitudeClass(traits.HasTraits):
             panel.SetSizer( sizer )
             control.GetParent().SetMinSize(control.GetMinSize())
 
-            if 1:
+            for side in ['left','right']:
+
                 x=np.arange(self.resolution)
                 y=(x-self.resolution/2.0)**2
                 plot = create_line_plot((x,y), color="red", width=2.0)
@@ -251,16 +252,20 @@ class StrokelitudeClass(traits.HasTraits):
                 bottom.tick_interval = 2.0
                 vgrid.grid_interval = 2.0
 
-                component = plot
-                self.left_plot=plot
+                if side=='left':
+                    self.left_plot=plot
+                elif side=='right':
+                    self.right_plot=plot
 
-            panel = xrc.XRCCTRL(self.frame,'LIVEVIEW_PANEL')
-            sizer = wx.BoxSizer(wx.HORIZONTAL)
-            self.enable_window = Window( panel, -1, component = component )
-            control = self.enable_window.control
-            sizer.Add(control, 1, wx.EXPAND)
-            panel.SetSizer( sizer )
-            control.GetParent().SetMinSize(control.GetMinSize())
+                component = plot
+
+                panel = xrc.XRCCTRL(self.frame,side.upper()+'_LIVEVIEW_PANEL')
+                sizer = wx.BoxSizer(wx.HORIZONTAL)
+                self.enable_window = Window( panel, -1, component = component )
+                control = self.enable_window.control
+                sizer.Add(control, 1, wx.EXPAND)
+                panel.SetSizer( sizer )
+                control.GetParent().SetMinSize(control.GetMinSize())
 
         self.cam_id = None
         self.width = 20
@@ -361,7 +366,7 @@ class StrokelitudeClass(traits.HasTraits):
 
         left_vals, right_vals = lrvals
         self.left_plot.value.set_data(left_vals)
-        #self.right_plot.value.set_data(right_vals)
+        self.right_plot.value.set_data(right_vals)
 
     def set_view_flip_LR( self, val ):
         pass

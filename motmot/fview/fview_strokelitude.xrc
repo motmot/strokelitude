@@ -13,7 +13,7 @@
         <object class="wxNotebook">
           <object class="notebookpage">
             <object class="wxPanel">
-              
+
               <object class="wxBoxSizer">
                 <object class="sizeritem">
                   <object class="wxCheckBox" name="DRAW_MASK_REGION">
@@ -27,7 +27,12 @@
                 </object>
                 <orient>wxVERTICAL</orient>
                 <object class="sizeritem">
-                  <object class="wxPanel" name="LIVEVIEW_PANEL"/>
+                  <object class="wxPanel" name="LEFT_LIVEVIEW_PANEL"/>
+                  <option>1</option>
+                  <flag>wxEXPAND</flag>
+                </object>
+                <object class="sizeritem">
+                  <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
                   <option>1</option>
                   <flag>wxEXPAND</flag>
                 </object>
