@@ -204,18 +204,6 @@ def quad2imvec(quad,width,height,debug_count=0):
     imvec = arr.ravel()
     return imvec
 
-class Box(Component):
-    resizable = ""
-
-    def _draw_mainlayer(self, gc, view_bounds=None, mode="default"):
-        gc.save_state()
-        gc.set_fill_color((1.0, 0.0, 0.0, 1.0))
-        dx, dy = self.bounds
-        x, y = self.position
-        gc.rect(x, y, dx, dy)
-        gc.fill_path()
-        gc.restore_state()
-
 class StrokelitudeClass(traits.HasTraits):
     mask_dirty = traits.Bool(True) # True the mask parameters changed
     resolution = traits.Int(30)
@@ -247,34 +235,24 @@ class StrokelitudeClass(traits.HasTraits):
             panel.SetSizer( sizer )
             control.GetParent().SetMinSize(control.GetMinSize())
 
-        if 1:
-            if 0:
-                box = Box(bounds=[100.0, 100.0], position=[50.0, 50.0])
-                component = box
-            else:
-                if 1:
-                    x=np.arange(self.resolution)
-                    y=(x-self.resolution/2.0)**2
-                    plot = create_line_plot((x,y), color="red", width=2.0)
-                    value_range = plot.value_mapper.range
-                    index_range = plot.index_mapper.range
+            if 1:
+                x=np.arange(self.resolution)
+                y=(x-self.resolution/2.0)**2
+                plot = create_line_plot((x,y), color="red", width=2.0)
+                value_range = plot.value_mapper.range
+                index_range = plot.index_mapper.range
 
-                    plot.padding = 10
-                    plot.fill_padding = True
-                    plot.bgcolor = "white"
+                plot.padding = 10
+                plot.fill_padding = True
+                plot.bgcolor = "white"
 
-                    left, bottom = add_default_axes(plot)
-                    hgrid, vgrid = add_default_grids(plot)
-                    bottom.tick_interval = 2.0
-                    vgrid.grid_interval = 2.0
+                left, bottom = add_default_axes(plot)
+                hgrid, vgrid = add_default_grids(plot)
+                bottom.tick_interval = 2.0
+                vgrid.grid_interval = 2.0
 
-                    component = plot
-                    self.left_plot=plot
-                else:
-
-                    left_view = DataView(border_visible = True)
-                    component = left_view
-
+                component = plot
+                self.left_plot=plot
 
             panel = xrc.XRCCTRL(self.frame,'LIVEVIEW_PANEL')
             sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -321,7 +299,6 @@ class StrokelitudeClass(traits.HasTraits):
         right_mat = np.array(right_mat)
         self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
 
-        print left_mat.shape
         self.mask_dirty=False
 
     def on_mask_change(self):
@@ -380,11 +357,11 @@ class StrokelitudeClass(traits.HasTraits):
             except Queue.Empty:
                 break
         if lrvals is None:
-            print 'no plot'
             return
 
         left_vals, right_vals = lrvals
         self.left_plot.value.set_data(left_vals)
+        #self.right_plot.value.set_data(right_vals)
 
     def set_view_flip_LR( self, val ):
         pass
