@@ -4,21 +4,34 @@
     <object class="wxBoxSizer">
       <orient>wxVERTICAL</orient>
       <object class="sizeritem">
-        <object class="wxButton" name="RECOMPUTE_MASK">
-          <label>recompute mask</label>
+        <object class="wxBoxSizer">
+          <object class="sizeritem">
+            <object class="wxButton" name="RECOMPUTE_MASK">
+              <label>recompute mask</label>
+            </object>
+            <flag>wxALL|wxALIGN_CENTRE</flag>
+            <border>5</border>
+          </object>
+          <object class="sizeritem">
+            <object class="wxCheckBox" name="ENABLE_PROCESSING">
+              <label>Enable processing</label>
+            </object>
+            <flag>wxALL|wxALIGN_CENTRE</flag>
+            <border>5</border>
+          </object>
+          <orient>wxHORIZONTAL</orient>
         </object>
-        <flag>wxALIGN_CENTRE_HORIZONTAL</flag>
+        <flag>wxALL|wxALIGN_CENTRE_HORIZONTAL</flag>
+        <border>5</border>
       </object>
       <object class="sizeritem">
         <object class="wxNotebook">
           <object class="notebookpage">
             <object class="wxPanel">
-
               <object class="wxBoxSizer">
                 <object class="sizeritem">
                   <object class="wxCheckBox" name="DRAW_MASK_REGION">
                     <label>Draw mask region</label>
-                    <checked>1</checked>
                   </object>
                 </object>
                 <object class="sizeritem">

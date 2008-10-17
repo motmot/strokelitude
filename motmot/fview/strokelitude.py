@@ -328,6 +328,8 @@ class StrokelitudeClass(traits.HasTraits):
         wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
                       self.recompute_mask)
 
+        self.enabled_box = xrc.XRCCTRL(self.frame,'ENABLE_PROCESSING')
+
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
 
     def recompute_mask(self,event):
@@ -385,8 +387,8 @@ class StrokelitudeClass(traits.HasTraits):
             draw_linesegs.extend( self.maskdata.get_quads('right'))
             draw_linesegs.extend( self.maskdata.get_extra_linesegs() )
 
-        enabled = True
-        if enabled and not self.mask_dirty:
+        # XXX naughty to cross thread boundary to get enabled_box value, too
+        if self.enabled_box.GetValue() and not self.mask_dirty:
 
             this_image = np.asarray(buf)
             this_image_flat = this_image.ravel()
