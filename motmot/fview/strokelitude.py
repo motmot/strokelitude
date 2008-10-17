@@ -149,6 +149,21 @@ class MaskData(traits.HasTraits):
                               [-10,10]],dtype=np.float)
             verts = np.dot(self._rotation, verts) + self._translation
             linesegs.append( verts.T.ravel() )
+        if 1:
+            # half-circle centers
+            n = 10
+            theta = np.linspace(0,2*np.pi,10)
+            verts = np.array([ 5*np.cos(theta),
+                               5*np.sin(theta) ])
+            vleft = verts+self._wingsplit_translation['left']
+            vright = verts+self._wingsplit_translation['right']
+
+            vleft = np.dot(self._rotation, vleft) + self._translation
+            vright = np.dot(self._rotation, vright) + self._translation
+
+            linesegs.append( vleft.T.ravel() )
+            linesegs.append( vright.T.ravel() )
+
         return linesegs
 
     def get_quads(self,side):
@@ -277,18 +292,15 @@ class StrokelitudeClass(traits.HasTraits):
 
                 x=np.arange(self.maskdata.nbins,dtype=np.float64)
                 y=np.zeros_like(x)
-                plot = create_line_plot((x,y), color="red", width=2.0)
+                plot = create_line_plot((x,y), color="red", width=2.0,
+                                        border_visible=True,
+                                        #add_axis=True,
+                                        )
                 value_range = plot.value_mapper.range
                 index_range = plot.index_mapper.range
 
                 plot.padding = 10
-                plot.fill_padding = True
                 plot.bgcolor = "white"
-
-                left, bottom = add_default_axes(plot)
-                hgrid, vgrid = add_default_grids(plot)
-                bottom.tick_interval = 2.0
-                vgrid.grid_interval = 2.0
 
                 if side=='left':
                     self.left_plot=plot
