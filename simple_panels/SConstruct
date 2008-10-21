@@ -22,7 +22,7 @@ if 1:
 
     libname='dumpframe1'
 
-    lib_output_dir = 'motmot/fview'
+    lib_output_dir = 'simple_panels'
     dumpframe_external_libpath = ['#%s'%lib_output_dir]
 
     dumpframe_obj_dict = {}
