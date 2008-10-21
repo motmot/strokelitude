@@ -1,3 +1,0 @@
-[motmot.fview.plugins]
-motmot.fview.fview2panels = motmot.fview.fview2panels:FView2Panels_Class
-
