@@ -1,0 +1,16 @@
+#emacs, this is -*-Python-*- mode
+Import('env','dumpframe_external_libs',
+       'dumpframe_external_libpath','dumpframe_env_kwargs')
+
+obj = env.Object(target='demo',
+                 source=['demo.c'],
+                 LIBS=dumpframe_external_libs,
+                 LIBPATH=dumpframe_external_libpath,
+                 CPPPATH=['../dumpframe_src'],
+                 **dumpframe_env_kwargs)
+env.Program(target='dumpframe_no_library',
+            source=obj,
+            LIBS=dumpframe_external_libs,
+            LIBPATH=dumpframe_external_libpath,
+            CPPPATH=['../dumpframe_src'],
+            **dumpframe_env_kwargs)
