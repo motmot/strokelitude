@@ -10,6 +10,7 @@ import numpy as np
 import cairo
 import scipy.sparse
 import Queue
+import os
 
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
@@ -28,6 +29,35 @@ RES.LoadFromString(open(RESFILE).read())
 DataReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
+
+def load_plugins():
+    # modified from motmot.fview.plugin_manager
+    PluginClasses = []
+    loaded_components = []
+    pkg_env = pkg_resources.Environment()
+    for name in pkg_env:
+        egg = pkg_env[name][0]
+        modules = []
+
+        for name in egg.get_entry_map('motmot.fview_strokelitude.plugins'):
+            egg.activate()
+            entry_point = egg.get_entry_info('motmot.fview_strokelitude.plugins', name)
+            if entry_point.module_name not in loaded_components:
+                try:
+                    PluginClass = entry_point.load()
+                except Exception,x:
+                    if int(os.environ.get('FVIEW_RAISE_ERRORS','0')):
+                        raise
+                    else:
+                        import warnings
+                        warnings.warn('could not load plugin (set env var FVIEW_RAISE_ERRORS to raise error) %s: %s'%(str(entry_point),str(x)))
+                        continue
+                PluginClasses.append( PluginClass )
+                modules.append(entry_point.module_name)
+                loaded_components.append(entry_point.module_name)
+    # make instances of plugins
+    plugins = [PluginClass() for PluginClass in PluginClasses]
+    return plugins
 
 class MaskData(traits.HasTraits):
     # lengths, in pixels
@@ -162,6 +192,16 @@ class MaskData(traits.HasTraits):
 
             linesegs.append( vleft.T.ravel() )
             linesegs.append( vright.T.ravel() )
+
+        if 1:
+            # left wing
+            verts = np.array([[0.0, 0.0, 20.0],
+                              [20.0,0.0, 0.0]])
+            vleft = verts+self._wingsplit_translation['left']
+
+            vleft = np.dot(self._rotation, vleft) + self._translation
+
+            linesegs.append( vleft.T.ravel() )
 
         return linesegs
 
@@ -298,6 +338,28 @@ class StrokelitudeClass(traits.HasTraits):
         self.vals_queue = Queue.Queue()
 
         self.recomputing_lock = threading.Lock()
+
+        if 1:
+            # load plugins
+            self.plugins = load_plugins()
+            print 'fview_strokelitude loaded plugins:',self.plugins
+            if len(self.plugins)>1:
+                warnings.warn('currently only support for max 1 plugin')
+                del self.plugins[1:]
+
+            if len(self.plugins):
+                plugin = self.plugins[0]
+
+                panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
+                sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+                control = plugin.edit_traits( parent=panel,
+                                              kind='subpanel',
+                                              ).control
+                sizer.Add(control, 1, wx.EXPAND)
+                panel.SetSizer( sizer )
+                control.GetParent().SetMinSize(control.GetMinSize())
+
 
         if 1:
             # setup maskdata parameter panel
@@ -468,6 +530,7 @@ class StrokelitudeClass(traits.HasTraits):
                 left_vals  = left_mat_sparse  * this_image_flat
                 right_vals = right_mat_sparse * this_image_flat
 
+                results = []
                 for side in ('left','right'):
                     if side=='left':
                         vals = left_vals
@@ -487,11 +550,17 @@ class StrokelitudeClass(traits.HasTraits):
 
                     angle_radians = self.maskdata.index2angle(side,
                                                               first_idx)
+                    results.append( angle_radians )
+
+                    # draw lines
                     draw_linesegs.extend(
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
-                self.vals_queue.put( (left_vals, right_vals) )
+                for plugin in self.plugins:
+                    plugin.process_data( *results )
 
+                # send values from each quad to be drawn
+                self.vals_queue.put( (left_vals, right_vals) )
                 event = wx.CommandEvent(DataReadyEvent)
                 event.SetEventObject(self.frame)
                 wx.PostEvent(self.frame, event) # triggers call to self.OnDataReady
