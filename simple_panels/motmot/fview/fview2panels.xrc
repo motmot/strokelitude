@@ -1,6 +1,0 @@
-<?xml version="1.0" ?>
-<resource>
-  <object class="wxFrame" name="FVIEW_2_PANELS_FRAME">
-    <title>FView to USB panels</title>
-  </object>
-</resource>
