@@ -49,11 +49,13 @@
                   <object class="wxPanel" name="LEFT_LIVEVIEW_PANEL"/>
                   <option>1</option>
                   <flag>wxEXPAND</flag>
+                  <minsize>100,60</minsize>
                 </object>
                 <object class="sizeritem">
                   <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
                   <option>1</option>
                   <flag>wxEXPAND</flag>
+                  <minsize>100,60</minsize>
                 </object>
               </object>
             </object>
