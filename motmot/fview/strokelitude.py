@@ -243,7 +243,14 @@ class MaskData(traits.HasTraits):
 
     def index2angle(self,side,idx):
         """convert index to angle (in radians)"""
-        return self._all_theta[side][idx]
+        alpha = self.alpha*D2R
+        beta = self.beta*D2R
+        if side=='right':
+            alpha = -alpha
+            beta = -beta
+        frac = idx/self.nbins
+        diff = beta-alpha
+        return alpha+frac*diff
 
     def get_span_lineseg(self,side,theta):
         """draw line on side at angle theta (in radians)"""
@@ -320,6 +327,11 @@ def resample_sparse( orig, orig_h, orig_w, offset, new_h, new_w ):
     return result
 
 class StrokelitudeClass(traits.HasTraits):
+    """plugin for fview.
+
+    Because this class implements everything necessary to be a valid fview plugin,
+    some of the methods here are necessary.
+    """
     mask_dirty = traits.Bool(True) # True the mask parameters changed
 
     def _mask_dirty_changed(self):
@@ -336,6 +348,7 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
         self.vals_queue = Queue.Queue()
+        self.bg_queue = Queue.Queue()
 
         self.recomputing_lock = threading.Lock()
 
@@ -413,6 +426,11 @@ class StrokelitudeClass(traits.HasTraits):
         wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
                       self.recompute_mask)
 
+        ctrl = xrc.XRCCTRL(self.frame,'TAKE_BG_BUTTON')
+        wx.EVT_BUTTON(ctrl, ctrl.GetId(), self.OnTakeBg)
+        ctrl = xrc.XRCCTRL(self.frame,'CLEAR_BG_BUTTON')
+        wx.EVT_BUTTON(ctrl, ctrl.GetId(), self.OnClearBg)
+
         self.enabled_box = xrc.XRCCTRL(self.frame,'ENABLE_PROCESSING')
 
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
@@ -444,6 +462,10 @@ class StrokelitudeClass(traits.HasTraits):
 
             self._sparse_roi_cache = None # clear cache
             self._recomputed_timestamp = time.time() # use as a hash value
+
+            bg_image_flat = self.bg_image.ravel()
+            self.bg_left_vec = self.left_mat_sparse  * bg_image_flat
+            self.bg_right_vec = self.right_mat_sparse  * bg_image_flat
 
             self.mask_dirty=False
 
@@ -483,11 +505,25 @@ class StrokelitudeClass(traits.HasTraits):
 
                 draw_linesegs.extend( extra )
 
+            command = None
+            while 1:
+                try:
+                    # all we care about is last command
+                    command = self.bg_queue.get_nowait()
+                except Queue.Empty, err:
+                    break
+
+            this_image = np.asarray(buf)
+            if command == 'clear':
+                self.bg_image = np.zeros_like( this_image )
+                self.mask_dirty = True # naughty to cross thread boundary
+            elif command == 'take':
+                self.bg_image = np.array( this_image, copy=True )
+                self.mask_dirty = True # naughty to cross thread boundary
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
             if self.enabled_box.GetValue() and not self.mask_dirty:
 
-                this_image = np.asarray(buf)
                 h,w = this_image.shape
                 if not (self.width==w and self.height==h):
                     warnings.warn('no ROI support for calculating stroke amplitude')
@@ -521,14 +557,22 @@ class StrokelitudeClass(traits.HasTraits):
                                                    left_mat_sparse,
                                                    right_mat_sparse )
 
+                    raise NotImplementedError('need to support background images for ROI')
+
                 else:
                     left_mat_sparse = self.left_mat_sparse
                     right_mat_sparse = self.right_mat_sparse
+
+                    bg_left_vec = self.bg_left_vec
+                    bg_right_vec = self.bg_right_vec
 
                 this_image_flat = this_image.ravel()
 
                 left_vals  = left_mat_sparse  * this_image_flat
                 right_vals = right_mat_sparse * this_image_flat
+
+                left_vals = left_vals - bg_left_vec
+                right_vals = right_vals - bg_right_vec
 
                 results = []
                 for side in ('left','right'):
@@ -543,13 +587,21 @@ class StrokelitudeClass(traits.HasTraits):
                         continue
                     all_idxs = np.nonzero(vals>=mid_val)[0]
                     assert len(all_idxs) > 0
-                    first_idx = all_idxs[0]
+                    second_idx = all_idxs[0]
+                    first_idx = second_idx - 1
+                    if first_idx==-1:
+                        interp_idx = 0.0
+                    else:
+                        # y = mx+b
+                        m = vals[second_idx] - vals[first_idx] # slope (indices are unity apart)
+                        b = vals[first_idx] - m*first_idx
+                        interp_idx = (mid_val-b)/m
 
                     #latency_sec = time.time()-timestamp
                     #print 'msec % 5.1f'%(latency_sec*1000.0,)
 
                     angle_radians = self.maskdata.index2angle(side,
-                                                              first_idx)
+                                                              interp_idx)
                     results.append( angle_radians )
 
                     # draw lines
@@ -568,6 +620,12 @@ class StrokelitudeClass(traits.HasTraits):
             self.recomputing_lock.release()
 
         return draw_points, draw_linesegs
+
+    def OnTakeBg(self,event):
+        self.bg_queue.put('take')
+
+    def OnClearBg(self,event):
+        self.bg_queue.put('clear')
 
     def OnDataReady(self, event):
         lrvals = None
@@ -604,6 +662,9 @@ class StrokelitudeClass(traits.HasTraits):
         self.height = max_height
         self.maskdata.maxx = self.width
         self.maskdata.maxy = self.height
+
+        self.bg_image = np.zeros( (max_height, max_width),
+                                  dtype=np.uint8)
 
 if __name__=='__main__':
 

@@ -24,7 +24,6 @@
         <flag>wxALL|wxALIGN_CENTRE_HORIZONTAL</flag>
         <border>5</border>
       </object>
-      
       <object class="sizeritem">
         <object class="wxPanel" name="PLUGIN_PANEL"/>
         <flag>wxEXPAND</flag>
@@ -56,6 +55,23 @@
                   <option>1</option>
                   <flag>wxEXPAND</flag>
                   <minsize>100,60</minsize>
+                </object>
+                <object class="sizeritem">
+                  <object class="wxBoxSizer">
+                    <object class="sizeritem">
+                      <object class="wxButton" name="TAKE_BG_BUTTON">
+                        <label>Take background image</label>
+                      </object>
+                    </object>
+                    <object class="sizeritem">
+                      <object class="wxButton" name="CLEAR_BG_BUTTON">
+                        <label>Clear background image</label>
+                      </object>
+                    </object>
+                    <orient>wxHORIZONTAL</orient>
+                  </object>
+                  <flag>wxALL|wxEXPAND|wxALIGN_CENTRE_HORIZONTAL</flag>
+                  <border>5</border>
                 </object>
               </object>
             </object>
