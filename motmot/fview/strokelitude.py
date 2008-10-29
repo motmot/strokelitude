@@ -30,6 +30,26 @@ DataReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
 
+class PluginHandlerThread( threading.Thread ):
+    def __init__(self,plugin,quit_event):
+        self._plugin = plugin
+        self._quit_event = quit_event
+        threading.Thread.__init__(self)
+
+    def run(self):
+        last_run = 0.0
+        dt = 1.0 / 100.0 # 100 Hz
+
+        while not self._quit_event.isSet():
+            now = time.time()
+            next = last_run + dt
+            sleep_dur = next-now
+            if sleep_dur > 0.0:
+                time.sleep(sleep_dur)
+            last_run = time.time()
+
+            self._plugin.do_work()
+
 def load_plugins():
     # modified from motmot.fview.plugin_manager
     PluginClasses = []
@@ -355,11 +375,13 @@ class StrokelitudeClass(traits.HasTraits):
         if 1:
             # load plugins
             self.plugins = load_plugins()
+            self.plugin_data_queues = [ p.incoming_data_queue for p in self.plugins ]
             print 'fview_strokelitude loaded plugins:',self.plugins
             if len(self.plugins)>1:
                 warnings.warn('currently only support for max 1 plugin')
                 del self.plugins[1:]
 
+            self.quit_plugin_event = threading.Event()
             if len(self.plugins):
                 plugin = self.plugins[0]
 
@@ -373,6 +395,9 @@ class StrokelitudeClass(traits.HasTraits):
                 panel.SetSizer( sizer )
                 control.GetParent().SetMinSize(control.GetMinSize())
 
+                plugin_thread = PluginHandlerThread(plugin, self.quit_plugin_event)
+                plugin_thread.setDaemon(True) # don't let this thread keep app alive
+                plugin_thread.start()
 
         if 1:
             # setup maskdata parameter panel
@@ -608,8 +633,8 @@ class StrokelitudeClass(traits.HasTraits):
                     draw_linesegs.extend(
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
-                for plugin in self.plugins:
-                    plugin.process_data( *results )
+                for queue in self.plugin_data_queues:
+                    queue.put( (cam_id,timestamp,framenumber,results) )
 
                 # send values from each quad to be drawn
                 self.vals_queue.put( (left_vals, right_vals) )
@@ -648,7 +673,7 @@ class StrokelitudeClass(traits.HasTraits):
         pass
 
     def quit(self):
-        pass
+        self.quit_plugin_event.set()
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
