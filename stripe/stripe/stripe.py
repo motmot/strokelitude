@@ -2,6 +2,7 @@ from __future__ import division
 import simple_panels.simple_panels as simple_panels
 import time
 import numpy as np
+import Queue
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
@@ -26,16 +27,37 @@ class StripeClass(traits.HasTraits):
         self.offset = 0.0 # in radians per second
         self._arr = np.zeros( (self.panel_height*8, self.panel_width*8),
                               dtype=np.uint8)
-    def process_data( self, left_angle_radians, right_angle_radians ):
+        self.vel = 0.0
+        self.incoming_data_queue = Queue.Queue()
+
+    def do_work( self ):
+        """This gets called frequently (e.g. 100 Hz)"""
+
+        # Get any available incoming data. Ignore all but most recent.
+        last_data = None
+        while 1:
+            try:
+                last_data = self.incoming_data_queue.get_nowait()
+            except Queue.Empty, err:
+                break
+
+        # Update stripe velocity if new data arrived.
+        if last_data is not None:
+            (cam_id,timestamp,framenumber,results) = last_data
+            left_angle_radians, right_angle_radians = results
+            #L = left_angle_radians*R2D
+            #R = right_angle_radians*R2D
+            diff_radians = left_angle_radians + right_angle_radians # (opposite signs already from angle measurement)
+            self.vel = diff_radians*self.gain + self.offset
+
+        # Compute stripe position.
         now = time.time()
         dt = now-self.last_time
         self.last_time = now
 
-        L = left_angle_radians*R2D
-        R = right_angle_radians*R2D
-        diff_radians = left_angle_radians + right_angle_radians # (opposite signs already from angle measurement)
-        vel = diff_radians*self.gain + self.offset
-        self.stripe_pos_radians += vel*dt
+        self.stripe_pos_radians += self.vel*dt
+
+        # Draw stripe
         self.draw_stripe()
 
     def draw_stripe(self):

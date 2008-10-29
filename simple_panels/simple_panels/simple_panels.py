@@ -3,7 +3,7 @@ from __future__ import division
 import pkg_resources
 
 import numpy as np
-import sys
+import sys, os
 import pkg_resources
 import ctypes
 
@@ -28,9 +28,11 @@ intptr_type = _getintp_ctype()
 
 if sys.platform.startswith('win'):
     my_shlib_fname = pkg_resources.resource_filename(__name__,'dumpframe1.dll')
+    my_shlib_fname = os.path.abspath(my_shlib_fname)
     my_shlib = ctypes.CDLL(my_shlib_fname)
 else:
     my_shlib_fname = pkg_resources.resource_filename(__name__,'libdumpframe1.so')
+    my_shlib_fname = os.path.abspath(my_shlib_fname)
     my_shlib = ctypes.cdll.LoadLibrary(my_shlib_fname)
 
 my_shlib.display_frame.restype = ctypes.c_int
