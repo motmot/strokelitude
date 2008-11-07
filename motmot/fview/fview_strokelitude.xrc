@@ -24,10 +24,30 @@
         <flag>wxALL|wxALIGN_CENTRE_HORIZONTAL</flag>
         <border>5</border>
       </object>
+      
+      
       <object class="sizeritem">
-        <object class="wxPanel" name="PLUGIN_PANEL"/>
+        <object class="wxStaticBoxSizer">
+          <object class="sizeritem">
+            <object class="wxBoxSizer">
+              <object class="sizeritem">
+                <object class="wxChoice" name="PLUGIN_CHOICE"/>
+                <flag>wxEXPAND</flag>
+              </object>
+              <object class="sizeritem">
+                <object class="wxPanel" name="PLUGIN_PANEL"/>
+                <flag>wxEXPAND</flag>
+                <minsize>100,100</minsize>
+              </object>
+              <orient>wxVERTICAL</orient>
+            </object>
+            <option>1</option>
+            <flag>wxEXPAND</flag>
+          </object>
+          <label>stimulus plugins</label>
+          <orient>wxHORIZONTAL</orient>
+        </object>
         <flag>wxEXPAND</flag>
-        <minsize>100,100</minsize>
       </object>
       <object class="sizeritem">
         <object class="wxNotebook">
@@ -48,13 +68,13 @@
                   <object class="wxPanel" name="LEFT_LIVEVIEW_PANEL"/>
                   <option>1</option>
                   <flag>wxEXPAND</flag>
-                  <minsize>100,60</minsize>
+                  <minsize>100,100</minsize>
                 </object>
                 <object class="sizeritem">
                   <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
                   <option>1</option>
                   <flag>wxEXPAND</flag>
-                  <minsize>100,60</minsize>
+                  <minsize>100,100</minsize>
                 </object>
                 <object class="sizeritem">
                   <object class="wxBoxSizer">

@@ -53,7 +53,6 @@ class PluginHandlerThread( threading.Thread ):
 def load_plugins():
     # modified from motmot.fview.plugin_manager
     PluginClasses = []
-    loaded_components = []
     pkg_env = pkg_resources.Environment()
     for name in pkg_env:
         egg = pkg_env[name][0]
@@ -62,19 +61,17 @@ def load_plugins():
         for name in egg.get_entry_map('motmot.fview_strokelitude.plugins'):
             egg.activate()
             entry_point = egg.get_entry_info('motmot.fview_strokelitude.plugins', name)
-            if entry_point.module_name not in loaded_components:
-                try:
-                    PluginClass = entry_point.load()
-                except Exception,x:
-                    if int(os.environ.get('FVIEW_RAISE_ERRORS','0')):
-                        raise
-                    else:
-                        import warnings
-                        warnings.warn('could not load plugin (set env var FVIEW_RAISE_ERRORS to raise error) %s: %s'%(str(entry_point),str(x)))
-                        continue
-                PluginClasses.append( PluginClass )
-                modules.append(entry_point.module_name)
-                loaded_components.append(entry_point.module_name)
+            try:
+                PluginClass = entry_point.load()
+            except Exception,x:
+                if int(os.environ.get('FVIEW_RAISE_ERRORS','0')):
+                    raise
+                else:
+                    import warnings
+                    warnings.warn('could not load plugin (set env var FVIEW_RAISE_ERRORS to raise error) %s: %s'%(str(entry_point),str(x)))
+                    continue
+            PluginClasses.append( PluginClass )
+            modules.append(entry_point.module_name)
     # make instances of plugins
     plugins = [PluginClass() for PluginClass in PluginClasses]
     return plugins
@@ -371,33 +368,42 @@ class StrokelitudeClass(traits.HasTraits):
         self.bg_queue = Queue.Queue()
 
         self.recomputing_lock = threading.Lock()
+        self.current_plugin_name = None # nothing loaded
 
         if 1:
             # load plugins
             self.plugins = load_plugins()
-            self.plugin_data_queues = [ p.incoming_data_queue for p in self.plugins ]
-            print 'fview_strokelitude loaded plugins:',self.plugins
-            if len(self.plugins)>1:
-                warnings.warn('currently only support for max 1 plugin')
-                del self.plugins[1:]
+            self.name2plugin=dict( [(p.get_name(),p) for p in self.plugins])
+            choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
+            plugin_names = self.name2plugin.keys()
+            for plugin_name in plugin_names:
+                choice.Append( plugin_name )
+            if len(plugin_name):
+                choice.SetSelection(0)
+            wx.EVT_CHOICE(choice, choice.GetId(), self.OnChoosePlugin)
+            self.OnChoosePlugin(None)
 
-            self.quit_plugin_event = threading.Event()
-            if len(self.plugins):
-                plugin = self.plugins[0]
+            ## if len(self.plugins)>1:
+            ##     warnings.warn('currently only support for max 1 plugin')
+            ##     del self.plugins[1:]
 
-                panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
-                sizer = wx.BoxSizer(wx.HORIZONTAL)
+            ## self.quit_plugin_event = threading.Event()
+            ## if len(self.plugins):
+            ##     plugin = self.plugins[0]
 
-                control = plugin.edit_traits( parent=panel,
-                                              kind='subpanel',
-                                              ).control
-                sizer.Add(control, 1, wx.EXPAND)
-                panel.SetSizer( sizer )
-                control.GetParent().SetMinSize(control.GetMinSize())
+            ##     panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
+            ##     sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-                plugin_thread = PluginHandlerThread(plugin, self.quit_plugin_event)
-                plugin_thread.setDaemon(True) # don't let this thread keep app alive
-                plugin_thread.start()
+            ##     control = plugin.edit_traits( parent=panel,
+            ##                                   kind='subpanel',
+            ##                                   ).control
+            ##     sizer.Add(control, 1, wx.EXPAND)
+            ##     panel.SetSizer( sizer )
+            ##     control.GetParent().SetMinSize(control.GetMinSize())
+
+            ##     plugin_thread = PluginHandlerThread(plugin, self.quit_plugin_event)
+            ##     plugin_thread.setDaemon(True) # don't let this thread keep app alive
+            ##     plugin_thread.start()
 
         if 1:
             # setup maskdata parameter panel
@@ -459,6 +465,31 @@ class StrokelitudeClass(traits.HasTraits):
         self.enabled_box = xrc.XRCCTRL(self.frame,'ENABLE_PROCESSING')
 
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
+
+    def OnChoosePlugin(self,event):
+        choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
+        name = choice.GetStringSelection()
+
+        if self.current_plugin_name == name:
+            return
+
+        if self.current_plugin_name is not None:
+            self.name2plugin[self.current_plugin_name].shutdown()
+
+        panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
+        panel.DestroyChildren()
+
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        control = wx.StaticText(panel,-1,'t=%s'%time.time())
+        sizer.Add(control, 1, wx.EXPAND)
+        panel.SetSizer( sizer )
+
+        plugin = self.name2plugin[name]
+        print 'on activate',name
+
+        # load plugin
+
+        self.current_plugin_name = name
 
     def recompute_mask(self,event):
         with self.recomputing_lock:
@@ -633,8 +664,8 @@ class StrokelitudeClass(traits.HasTraits):
                     draw_linesegs.extend(
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
-                for queue in self.plugin_data_queues:
-                    queue.put( (cam_id,timestamp,framenumber,results) )
+                ## for queue in self.plugin_data_queues:
+                ##     queue.put( (cam_id,timestamp,framenumber,results) )
 
                 # send values from each quad to be drawn
                 self.vals_queue.put( (left_vals, right_vals) )
@@ -673,7 +704,8 @@ class StrokelitudeClass(traits.HasTraits):
         pass
 
     def quit(self):
-        self.quit_plugin_event.set()
+        pass
+    ##     self.quit_plugin_event.set()
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
