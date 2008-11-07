@@ -3,7 +3,8 @@ from setuptools import setup, find_packages
 setup(name='strokelitude',
       version='0.1',
       entry_points = {
-    'motmot.fview.plugins':'strokelitude = strokelitude:StrokelitudeClass',
+    'motmot.fview.plugins':
+    'strokelitude = strokelitude.strokelitude:StrokelitudeClass',
     },
 
       packages = find_packages(),

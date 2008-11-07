@@ -22,7 +22,7 @@ from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, LinePlo
 from enthought.chaco2.api import create_line_plot, add_default_axes, add_default_grids
 
 # trigger extraction
-RESFILE = pkg_resources.resource_filename(__name__,"fview_strokelitude.xrc")
+RESFILE = pkg_resources.resource_filename(__name__,"strokelitude.xrc")
 RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
@@ -58,9 +58,9 @@ def load_plugins():
         egg = pkg_env[name][0]
         modules = []
 
-        for name in egg.get_entry_map('motmot.fview_strokelitude.plugins'):
+        for name in egg.get_entry_map('strokelitude.plugins'):
             egg.activate()
-            entry_point = egg.get_entry_info('motmot.fview_strokelitude.plugins', name)
+            entry_point = egg.get_entry_info('strokelitude.plugins', name)
             try:
                 PluginClass = entry_point.load()
             except Exception,x:
@@ -378,7 +378,7 @@ class StrokelitudeClass(traits.HasTraits):
             plugin_names = self.name2plugin.keys()
             for plugin_name in plugin_names:
                 choice.Append( plugin_name )
-            if len(plugin_name):
+            if len(plugin_names):
                 choice.SetSelection(0)
             wx.EVT_CHOICE(choice, choice.GetId(), self.OnChoosePlugin)
             self.OnChoosePlugin(None)
@@ -469,6 +469,8 @@ class StrokelitudeClass(traits.HasTraits):
     def OnChoosePlugin(self,event):
         choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
         name = choice.GetStringSelection()
+        if name == '':
+            name = None
 
         if self.current_plugin_name == name:
             return
