@@ -4,7 +4,7 @@ if int(os.environ.get('DISABLE_PANELS','0')):
     simple_panels = None
 else:
     import simple_panels.simple_panels as simple_panels
-import time
+import time, warnings
 import numpy as np
 import Queue
 import enthought.traits.api as traits
@@ -12,8 +12,15 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 
 import remote_traits
+import strokelitude.plugin
 
 R2D = 180.0/np.pi
+
+class StripePluginInfo(strokelitude.plugin.PluginBase):
+    def get_name(self):
+        return 'Closed Loop Stripe Fixation'
+    def get_hastraits_class(self):
+        return StripeClass, StripeClassWorker
 
 class StripeClass(remote_traits.MaybeRemoteHasTraits):
     gain = traits.Float(-1.0)
@@ -21,8 +28,9 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
 
     traits_view = View( Group( ( Item('gain'),
                                  Item('offset') )),
-                        title = 'Closed Loop Stripe Fixation',
                         )
+
+class StripeClassWorker(StripeClass):
     def __init__(self):
         self.panel_height=4
         self.panel_width=11
@@ -31,16 +39,19 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
         self.last_time = time.time()
         self.gain = -1.0 # in (radians per second) / radians
         self.offset = 0.0 # in radians per second
-        self._arr = np.zeros( (self.panel_height*8, self.panel_width*8),
+        self.arr = np.zeros( (self.panel_height*8, self.panel_width*8),
                               dtype=np.uint8)
         self.vel = 0.0
         self.last_diff_radians = 0.0
         self.incoming_data_queue = Queue.Queue()
 
+    def set_incoming_queue(self,data_queue):
+        self.incoming_data_queue = data_queue
+
     def do_work( self ):
         """This gets called frequently (e.g. 100 Hz)"""
 
-        # Get any available incoming data. Ignore all but most recent.
+        ## # Get any available incoming data. Ignore all but most recent.
         last_data = None
         while 1:
             try:
@@ -71,7 +82,7 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
         self.draw_stripe()
 
     def draw_stripe(self):
-        self._arr.fill( 255 ) # turn all pixels white
+        self.arr.fill( 255 ) # turn all pixels white
 
         # compute columns of stripe
         self.stripe_pos_radians = self.stripe_pos_radians % (2*np.pi)
@@ -83,17 +94,17 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
         pix_start = pix_start % (self.compute_width*8)
         pix_stop = pix_stop % (self.compute_width*8)
 
-        if pix_start >= self._arr.shape[1]:
-            pix_start = self._arr.shape[1]-1
-        if pix_stop >= self._arr.shape[1]:
-            pix_stop = self._arr.shape[1]
+        if pix_start >= self.arr.shape[1]:
+            pix_start = self.arr.shape[1]-1
+        if pix_stop >= self.arr.shape[1]:
+            pix_stop = self.arr.shape[1]
 
         # make the stripe pixels black
-        self._arr[:,pix_start:pix_stop]=0
+        self.arr[:,pix_start:pix_stop]=0
 
         if simple_panels is not None:
             # send to USB
-            simple_panels.display_frame(self._arr)
+            simple_panels.display_frame(self.arr)
         else:
             sys.stdout.write('%d '%round(pix_center))
             sys.stdout.flush()
