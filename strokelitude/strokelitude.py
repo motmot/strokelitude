@@ -369,6 +369,7 @@ class StrokelitudeClass(traits.HasTraits):
 
         self.recomputing_lock = threading.Lock()
         self.current_plugin_name = None # nothing loaded
+        self.current_plugin_queue = None
 
         if 1:
             # load plugins
@@ -476,20 +477,30 @@ class StrokelitudeClass(traits.HasTraits):
             return
 
         if self.current_plugin_name is not None:
+            # shutdown old plugin
             self.name2plugin[self.current_plugin_name].shutdown()
+            self.current_plugin_queue = None
 
         panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
         panel.DestroyChildren()
 
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
-        control = wx.StaticText(panel,-1,'t=%s'%time.time())
-        sizer.Add(control, 1, wx.EXPAND)
-        panel.SetSizer( sizer )
+        # startup new plugin
 
         plugin = self.name2plugin[name]
-        print 'on activate',name
+        hastraits_proxy, self.current_plugin_queue = plugin.startup()
 
-        # load plugin
+        # add to display
+
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        if 1:
+            control = hastraits_proxy.edit_traits( parent=panel,
+                                                   kind='subpanel',
+                                                   ).control
+        else:
+            control = wx.StaticText(panel,-1,'t=%s'%time.time())
+        sizer.Add(control, 1, wx.EXPAND)
+        panel.SetSizer( sizer )
+        panel.Layout()
 
         self.current_plugin_name = name
 
@@ -666,6 +677,9 @@ class StrokelitudeClass(traits.HasTraits):
                     draw_linesegs.extend(
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
+                if self.current_plugin_queue is not None:
+                    self.current_plugin_queue.put( (cam_id,timestamp,framenumber,results) )
+
                 ## for queue in self.plugin_data_queues:
                 ##     queue.put( (cam_id,timestamp,framenumber,results) )
 
@@ -706,8 +720,11 @@ class StrokelitudeClass(traits.HasTraits):
         pass
 
     def quit(self):
-        pass
-    ##     self.quit_plugin_event.set()
+        if self.current_plugin_name is None:
+            return
+
+        plugin = self.name2plugin[self.current_plugin_name]
+        plugin.shutdown()
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
