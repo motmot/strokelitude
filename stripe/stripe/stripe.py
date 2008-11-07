@@ -1,5 +1,9 @@
 from __future__ import division
-import simple_panels.simple_panels as simple_panels
+import os, sys
+if int(os.environ.get('DISABLE_PANELS','0')):
+    simple_panels = None
+else:
+    import simple_panels.simple_panels as simple_panels
 import time
 import numpy as np
 import Queue
@@ -7,9 +11,11 @@ import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 
+import remote_traits
+
 R2D = 180.0/np.pi
 
-class StripeClass(traits.HasTraits):
+class StripeClass(remote_traits.MaybeRemoteHasTraits):
     gain = traits.Float(-1.0)
     offset = traits.Float(0.0)
 
@@ -28,6 +34,7 @@ class StripeClass(traits.HasTraits):
         self._arr = np.zeros( (self.panel_height*8, self.panel_width*8),
                               dtype=np.uint8)
         self.vel = 0.0
+        self.last_diff_radians = 0.0
         self.incoming_data_queue = Queue.Queue()
 
     def do_work( self ):
@@ -48,7 +55,10 @@ class StripeClass(traits.HasTraits):
             #L = left_angle_radians*R2D
             #R = right_angle_radians*R2D
             diff_radians = left_angle_radians + right_angle_radians # (opposite signs already from angle measurement)
-            self.vel = diff_radians*self.gain + self.offset
+            self.last_diff_radians = diff_radians
+
+        # update self.vel every frame so that changes in gain and offset noticed
+        self.vel = self.last_diff_radians*self.gain + self.offset
 
         # Compute stripe position.
         now = time.time()
@@ -81,8 +91,12 @@ class StripeClass(traits.HasTraits):
         # make the stripe pixels black
         self._arr[:,pix_start:pix_stop]=0
 
-        # send to USB
-        simple_panels.display_frame(self._arr)
+        if simple_panels is not None:
+            # send to USB
+            simple_panels.display_frame(self._arr)
+        else:
+            sys.stdout.write('%d '%round(pix_center))
+            sys.stdout.flush()
 
 def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
     s = StripeClass()
@@ -101,6 +115,22 @@ def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
         if sleep_time > 0:
             time.sleep(sleep_time)
 
+DO_HOSTNAME='localhost'
+DO_PORT = 8442
+
+def mainloop():
+    stripe = StripeClass()
+    server = remote_traits.ServerObj(DO_HOSTNAME,DO_PORT)
+    server.serve_name('stripe',stripe)
+
+    desired_rate = 500.0 #hz
+    dt = 1.0/desired_rate
+
+    while 1: # run forever
+        server.handleRequests(timeout=dt) # handle network events
+        stripe.do_work()
+
 if __name__=='__main__':
     #rotate_stripe(revs=1,seconds_per_rev=5)
-    rotate_stripe(revs=10,seconds_per_rev=5)
+    #rotate_stripe(revs=10,seconds_per_rev=5)
+    mainloop()
