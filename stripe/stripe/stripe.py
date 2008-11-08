@@ -110,7 +110,7 @@ class StripeClassWorker(StripeClass):
             sys.stdout.flush()
 
 def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
-    s = StripeClass()
+    s = StripeClassWorker()
     dt = 1.0/fps
     theta = np.linspace(0, revs*2*np.pi, revs*seconds_per_rev*fps )
     now = time.time()
@@ -129,17 +129,31 @@ def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
 DO_HOSTNAME='localhost'
 DO_PORT = 8442
 
-def mainloop():
-    stripe = StripeClass()
+def mainloop_server():
+    stripe_proxy = StripeClass()
     server = remote_traits.ServerObj(DO_HOSTNAME,DO_PORT)
-    server.serve_name('stripe',stripe)
+    server.serve_name('stripe',stripe_proxy)
+
+    stripe_worker = StripeClassWorker()
+
+    def notify_worker_func( obj, name, value ):
+        setattr( stripe_worker, name, value)
+
+    stripe_proxy.on_trait_change(notify_worker_func)
 
     desired_rate = 500.0 #hz
     dt = 1.0/desired_rate
 
     while 1: # run forever
         server.handleRequests(timeout=dt) # handle network events
-        stripe.do_work()
+        stripe_worker.do_work()
+
+def mainloop():
+    stripe_worker = StripeClassWorker()
+    desired_rate = 500.0 #hz
+    dt = 1.0/desired_rate
+    while 1: # run forever
+        stripe_worker.do_work()
 
 if __name__=='__main__':
     #rotate_stripe(revs=1,seconds_per_rev=5)
