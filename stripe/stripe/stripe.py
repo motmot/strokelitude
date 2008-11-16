@@ -3,7 +3,7 @@ import os, sys
 if int(os.environ.get('DISABLE_PANELS','0')):
     simple_panels = None
 else:
-    import simple_panels.simple_panels as simple_panels
+    import simple_panels.simple_panels as simple_panels # try DISABLE_PANELS=1
 import time, warnings
 import numpy as np
 import Queue
