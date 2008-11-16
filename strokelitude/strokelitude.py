@@ -18,8 +18,10 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
 
 from enthought.enable2.api import Component, Container
 from enthought.enable2.wx_backend.api import Window
-from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, LinePlot, LinearMapper
-from enthought.chaco2.api import create_line_plot, add_default_axes, add_default_grids
+from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, \
+     LinePlot, LinearMapper
+from enthought.chaco2.api import create_line_plot, add_default_axes, \
+     add_default_grids
 
 # trigger extraction
 RESFILE = pkg_resources.resource_filename(__name__,"strokelitude.xrc")
@@ -68,7 +70,9 @@ def load_plugins():
                     raise
                 else:
                     import warnings
-                    warnings.warn('could not load plugin (set env var FVIEW_RAISE_ERRORS to raise error) %s: %s'%(str(entry_point),str(x)))
+                    warnings.warn('could not load plugin (set env var '
+                                  'FVIEW_RAISE_ERRORS to raise error) %s: %s'%(
+                        str(entry_point),str(x)))
                     continue
             PluginClasses.append( PluginClass )
             modules.append(entry_point.module_name)
@@ -104,7 +108,8 @@ class MaskData(traits.HasTraits):
 
     def _wingsplit_changed(self):
         self._wingsplit_translation['left'] = np.array([[0.0],[self.wingsplit]])
-        self._wingsplit_translation['right'] = np.array([[0.0],[-self.wingsplit]])
+        self._wingsplit_translation['right'] = np.array([[0.0],
+                                                         [-self.wingsplit]])
 
     def _gamma_changed(self):
         gamma = self.gamma*D2R
@@ -346,8 +351,8 @@ def resample_sparse( orig, orig_h, orig_w, offset, new_h, new_w ):
 class StrokelitudeClass(traits.HasTraits):
     """plugin for fview.
 
-    Because this class implements everything necessary to be a valid fview plugin,
-    some of the methods here are necessary.
+    Because this class implements everything necessary to be a valid
+    fview plugin, some of the methods here are necessary.
     """
     mask_dirty = traits.Bool(True) # True the mask parameters changed
 
@@ -384,11 +389,11 @@ class StrokelitudeClass(traits.HasTraits):
             wx.EVT_CHOICE(choice, choice.GetId(), self.OnChoosePlugin)
             self.OnChoosePlugin(None)
 
-            ## if len(self.plugins)>1:
-            ##     warnings.warn('currently only support for max 1 plugin')
-            ##     del self.plugins[1:]
+            if len(self.plugins)>1:
+                warnings.warn('currently only support for max 1 plugin')
+                del self.plugins[1:]
 
-            ## self.quit_plugin_event = threading.Event()
+            self.quit_plugin_event = threading.Event()
             ## if len(self.plugins):
             ##     plugin = self.plugins[0]
 
@@ -402,8 +407,10 @@ class StrokelitudeClass(traits.HasTraits):
             ##     panel.SetSizer( sizer )
             ##     control.GetParent().SetMinSize(control.GetMinSize())
 
-            ##     plugin_thread = PluginHandlerThread(plugin, self.quit_plugin_event)
-            ##     plugin_thread.setDaemon(True) # don't let this thread keep app alive
+            ##     plugin_thread = PluginHandlerThread(plugin,
+            ##                                         self.quit_plugin_event)
+            ##     # don't let this thread keep app alive
+            ##     plugin_thread.setDaemon(True)
             ##     plugin_thread.start()
 
         if 1:
@@ -455,7 +462,8 @@ class StrokelitudeClass(traits.HasTraits):
         self.mask_dirty=True
 
         self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
-        wx.EVT_BUTTON(self.recompute_mask_button, self.recompute_mask_button.GetId(),
+        wx.EVT_BUTTON(self.recompute_mask_button,
+                      self.recompute_mask_button.GetId(),
                       self.recompute_mask)
 
         ctrl = xrc.XRCCTRL(self.frame,'TAKE_BG_BUTTON')
@@ -513,7 +521,9 @@ class StrokelitudeClass(traits.HasTraits):
 
             left_mat = []
             for quad in left_quads:
-                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                imvec = quad2imvec(quad,
+                                   self.width,self.height,
+                                   debug_count=count)
                 left_mat.append( imvec )
                 count+=1
 
@@ -522,7 +532,9 @@ class StrokelitudeClass(traits.HasTraits):
 
             right_mat = []
             for quad in right_quads:
-                imvec = quad2imvec(quad,self.width,self.height,debug_count=count)
+                imvec = quad2imvec(quad,
+                                   self.width,self.height,
+                                   debug_count=count)
                 right_mat.append( imvec )
                 count+=1
 
@@ -595,7 +607,8 @@ class StrokelitudeClass(traits.HasTraits):
 
                 h,w = this_image.shape
                 if not (self.width==w and self.height==h):
-                    warnings.warn('no ROI support for calculating stroke amplitude')
+                    warnings.warn('no ROI support for calculating stroke '
+                                  'amplitude')
 
                     tmp = self._sparse_roi_cache
 
@@ -610,23 +623,26 @@ class StrokelitudeClass(traits.HasTraits):
                             right_mat_sparse = right
                             cache_ok = True
                     if not cache_ok:
-                        left_mat_sparse = resample_sparse( self.left_mat_sparse,
-                                                           self.height,
-                                                           self.width,
-                                                           buf_offset,
-                                                           h,w )
-                        right_mat_sparse = resample_sparse( self.right_mat_sparse,
-                                                            self.height,
-                                                            self.width,
-                                                            buf_offset,
-                                                            h,w )
+                        left_mat_sparse = resample_sparse(
+                            self.left_mat_sparse,
+                            self.height,
+                            self.width,
+                            buf_offset,
+                            h,w )
+                        right_mat_sparse = resample_sparse(
+                            self.right_mat_sparse,
+                            self.height,
+                            self.width,
+                            buf_offset,
+                            h,w )
                         self._sparse_roi_cache = ( self._recomputed_timestamp,
                                                    buf_offset,
                                                    (w,h),
                                                    left_mat_sparse,
                                                    right_mat_sparse )
 
-                    raise NotImplementedError('need to support background images for ROI')
+                    raise NotImplementedError('need to support background '
+                                              'images for ROI')
 
                 else:
                     left_mat_sparse = self.left_mat_sparse
@@ -661,8 +677,9 @@ class StrokelitudeClass(traits.HasTraits):
                     if first_idx==-1:
                         interp_idx = 0.0
                     else:
+                        # slope (indices are unity apart)
                         # y = mx+b
-                        m = vals[second_idx] - vals[first_idx] # slope (indices are unity apart)
+                        m = vals[second_idx] - vals[first_idx]
                         b = vals[first_idx] - m*first_idx
                         interp_idx = (mid_val-b)/m
 
@@ -678,7 +695,8 @@ class StrokelitudeClass(traits.HasTraits):
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
                 if self.current_plugin_queue is not None:
-                    self.current_plugin_queue.put( (cam_id,timestamp,framenumber,results) )
+                    self.current_plugin_queue.put(
+                        (cam_id,timestamp,framenumber,results) )
 
                 ## for queue in self.plugin_data_queues:
                 ##     queue.put( (cam_id,timestamp,framenumber,results) )
@@ -687,7 +705,9 @@ class StrokelitudeClass(traits.HasTraits):
                 self.vals_queue.put( (left_vals, right_vals) )
                 event = wx.CommandEvent(DataReadyEvent)
                 event.SetEventObject(self.frame)
-                wx.PostEvent(self.frame, event) # triggers call to self.OnDataReady
+
+                # trigger call to self.OnDataReady
+                wx.PostEvent(self.frame, event)
         finally:
             self.recomputing_lock.release()
 
