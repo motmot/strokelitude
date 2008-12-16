@@ -2,6 +2,8 @@ from __future__ import division, with_statement
 
 import pkg_resources
 
+import motmot.utils
+
 import wx
 import wx.xrc as xrc
 import warnings, time, threading
@@ -10,17 +12,17 @@ import numpy as np
 import cairo
 import scipy.sparse
 import Queue
-import os
+import os, warnings, pickle
 
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 
-from enthought.enable2.api import Component, Container
-from enthought.enable2.wx_backend.api import Window
-from enthought.chaco2.api import DataView, ArrayDataSource, ScatterPlot, \
+from enthought.enable.api import Component, Container
+from enthought.enable.wx_backend.api import Window
+from enthought.chaco.api import DataView, ArrayDataSource, ScatterPlot, \
      LinePlot, LinearMapper
-from enthought.chaco2.api import create_line_plot, add_default_axes, \
+from enthought.chaco.api import create_line_plot, add_default_axes, \
      add_default_grids
 
 # trigger extraction
@@ -82,16 +84,21 @@ def load_plugins():
 
 class MaskData(traits.HasTraits):
     # lengths, in pixels
-    x = traits.Float(401.0)
-    y = traits.Float(273.5)
-    wingsplit = traits.Float(70.3)
-    r1 = traits.Float(22.0)
+
+    # The upper bounds of these ranges should all be dynamically set
+    # based on image size
+    x = traits.Range(0.0, 656.0, 401.0, mode='slider', set_enter=True)
+    y = traits.Range(0.0, 491.0, 273.5, mode='slider', set_enter=True)
+    wingsplit = traits.Range(0.0, 180.0, 70.3, mode='slider', set_enter=True)
+
+    # The bounds of these should be dynamically set
+    r1 = traits.Range(0.0, 656.0, 22.0, mode='slider', set_enter=True)
     r2 = traits.Float(80.0)
 
     # angles, in degrees
-    alpha = traits.Range(0.0, 180.0, 14.0)
-    beta = traits.Range(0.0, 180.0, 87.0)
-    gamma = traits.Range(0.0, 360.0, 206.0)
+    alpha = traits.Range(0.0, 180.0, 14.0, mode='slider', set_enter=True)
+    beta = traits.Range(0.0, 180.0, 87.0, mode='slider', set_enter=True)
+    gamma = traits.Range(0.0, 360.0, 206.0, mode='slider', set_enter=True)
 
     # number of angular bins
     nbins = traits.Int(30)
@@ -145,28 +152,15 @@ class MaskData(traits.HasTraits):
         self._alpha_beta_nbins_changed()
 
     traits_view = View( Group( ( Item('x',
-                                      editor=RangeEditor(high_name='maxx',
-                                                         format='%.1f',
-                                                         label_width=50,
-                                                         ),
+                                      style='custom',
                                       ),
                                  Item('y',
-                                      editor=RangeEditor(high_name='maxy',
-                                                         format='%.1f',
-                                                         label_width=50,
-                                                         ),
+                                      style='custom',
                                       ),
                                  Item('wingsplit',
-                                      editor=RangeEditor(high_name='maxdim',
-                                                         format='%.1f',
-                                                         label_width=50,
-                                                         ),
+                                      style='custom',
                                       ),
-                                 Item('r1',
-                                      editor=RangeEditor(high_name='r2',
-                                                         format='%.1f',
-                                                         label_width=50,
-                                                         ),
+                                 Item('r1',style='custom',
                                       ),
                                  Item('r2',
                                       editor=RangeEditor(low_name='r1',
@@ -175,9 +169,9 @@ class MaskData(traits.HasTraits):
                                                          label_width=50,
                                                          ),
                                       ),
-                                 Item('alpha'),
-                                 Item('beta'),
-                                 Item('gamma'),
+                                 Item('alpha',style='custom'),
+                                 Item('beta',style='custom'),
+                                 Item('gamma',style='custom'),
                                  ),
                                orientation = 'horizontal',
                                show_border = False,
@@ -355,6 +349,7 @@ class StrokelitudeClass(traits.HasTraits):
     fview plugin, some of the methods here are necessary.
     """
     mask_dirty = traits.Bool(True) # True the mask parameters changed
+    maskdata = traits.Instance(MaskData)
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
@@ -367,7 +362,21 @@ class StrokelitudeClass(traits.HasTraits):
 
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
-        self.maskdata = MaskData()
+        # load maskdata from file
+        self.pkl_fname = motmot.utils.config.rc_fname(
+            must_already_exist=False,
+            filename='strokelitude-maskdata.pkl',
+            dirname='.fview')
+        loaded_maskdata = False
+        if os.path.exists(self.pkl_fname):
+            try:
+                self.maskdata = pickle.load(open(self.pkl_fname))
+                loaded_maskdata = True
+            except Exception,err:
+                warnings.warn(
+                    'could not open strokelitude persistance file: %s'%err)
+        if not loaded_maskdata:
+            self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
         self.vals_queue = Queue.Queue()
         self.bg_queue = Queue.Queue()
@@ -740,6 +749,9 @@ class StrokelitudeClass(traits.HasTraits):
         pass
 
     def quit(self):
+        # save current maskdata
+        pickle.dump(self.maskdata,open(self.pkl_fname,mode='w'))
+
         if self.current_plugin_name is None:
             return
 
