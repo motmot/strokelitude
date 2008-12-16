@@ -2,7 +2,7 @@ from __future__ import division, with_statement
 
 import pkg_resources
 
-import motmot.utils
+import motmot.utils.config
 
 import wx
 import wx.xrc as xrc
