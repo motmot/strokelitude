@@ -113,10 +113,11 @@ class MaskData(traits.HasTraits):
     def _maxy_changed(self):
         self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
 
-    def _wingsplit_changed(self):
-        self._wingsplit_translation['left'] = np.array([[0.0],[self.wingsplit]])
-        self._wingsplit_translation['right'] = np.array([[0.0],
-                                                         [-self.wingsplit]])
+    def _get_wingsplit_translation(self,side):
+        if side=='left':
+            return np.array([[0.0],[self.wingsplit]])
+        elif side=='right':
+            return np.array([[0.0],[-self.wingsplit]])
 
     def _gamma_changed(self):
         gamma = self.gamma*D2R
@@ -135,8 +136,6 @@ class MaskData(traits.HasTraits):
     def _alpha_beta_nbins_changed(self):
         alpha = self.alpha*D2R
         beta = self.beta*D2R
-        self._all_theta['left'] = np.linspace(alpha,beta,self.nbins+1)
-        self._all_theta['right'] = np.linspace(-alpha,-beta,self.nbins+1)
 
     # If any of alpha, beta or nbins changed
     _alpha_changed = _alpha_beta_nbins_changed
@@ -144,8 +143,6 @@ class MaskData(traits.HasTraits):
     _nbins_changed = _alpha_beta_nbins_changed
 
     def __init__(self):
-        self._wingsplit_translation = {}
-        self._all_theta = {}
         self._wingsplit_changed()
         self._gamma_changed()
         self._xy_changed()
@@ -200,8 +197,8 @@ class MaskData(traits.HasTraits):
             theta = np.linspace(0,2*np.pi,10)
             verts = np.array([ 5*np.cos(theta),
                                5*np.sin(theta) ])
-            vleft = verts+self._wingsplit_translation['left']
-            vright = verts+self._wingsplit_translation['right']
+            vleft = verts+self._get_wingsplit_translation('left')
+            vright = verts+self._get_wingsplit_translation('right')
 
             vleft = np.dot(self._rotation, vleft) + self._translation
             vright = np.dot(self._rotation, vright) + self._translation
@@ -213,7 +210,7 @@ class MaskData(traits.HasTraits):
             # left wing
             verts = np.array([[0.0, 0.0, 20.0],
                               [20.0,0.0, 0.0]])
-            vleft = verts+self._wingsplit_translation['left']
+            vleft = verts+self._get_wingsplit_translation('left')
 
             vleft = np.dot(self._rotation, vleft) + self._translation
 
@@ -237,7 +234,13 @@ class MaskData(traits.HasTraits):
         # "Mesa DRI Intel(R) 946GZ 4.1.3002 x86/MMX/SSE2, OpenGL 1.4
         # Mesa 7.0.3-rc2") - ADS 20081015
 
-        all_theta = self._all_theta[side]
+        alpha = self.alpha*D2R
+        beta = self.beta*D2R
+
+        if side=='left':
+            all_theta = np.linspace(alpha,beta,self.nbins+1)
+        elif side=='right':
+            all_theta = np.linspace(-alpha,-beta,self.nbins+1)
 
         linesegs = []
         for i in range(self.nbins):
@@ -250,7 +253,7 @@ class MaskData(traits.HasTraits):
                               self.r2*np.sin(theta[::-1])])
 
             wing_verts =  np.hstack(( inner, outer, inner[:,np.newaxis,0] ))
-            wing_verts += self._wingsplit_translation[side]
+            wing_verts += self._get_wingsplit_translation(side)
 
             wing_verts = np.dot(self._rotation, wing_verts) + self._translation
             linesegs.append( wing_verts.T.ravel() )
@@ -274,7 +277,7 @@ class MaskData(traits.HasTraits):
 
         verts = np.array( [[ 0, 1000.0*np.cos(theta)],
                            [ 0, 1000.0*np.sin(theta)]] )
-        verts = verts + self._wingsplit_translation[side]
+        verts = verts + self._get_wingsplit_translation(side)
         verts = np.dot(self._rotation, verts) + self._translation
         linesegs.append( verts.T.ravel() )
         return linesegs
@@ -353,6 +356,7 @@ class StrokelitudeClass(traits.HasTraits):
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
+            self.enabled_box.SetValue(False)
             self.recompute_mask_button.Enable(True)
         else:
             self.recompute_mask_button.Enable(False)
