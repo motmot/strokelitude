@@ -465,7 +465,7 @@ class StrokelitudeClass(traits.HasTraits):
                 control = self.enable_window.control
                 sizer.Add(control, 1, wx.EXPAND)
                 panel.SetSizer( sizer )
-                control.GetParent().SetMinSize(control.GetMinSize())
+                #control.GetParent().SetMinSize(control.GetMinSize())
 
         self.cam_id = None
         self.width = 20
