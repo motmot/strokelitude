@@ -6,13 +6,6 @@
       <object class="sizeritem">
         <object class="wxBoxSizer">
           <object class="sizeritem">
-            <object class="wxButton" name="RECOMPUTE_MASK">
-              <label>recompute mask</label>
-            </object>
-            <flag>wxALL|wxALIGN_CENTRE</flag>
-            <border>5</border>
-          </object>
-          <object class="sizeritem">
             <object class="wxCheckBox" name="ENABLE_PROCESSING">
               <label>Enable processing</label>
             </object>
@@ -25,57 +18,16 @@
         <border>5</border>
       </object>
       
-      
-      <object class="sizeritem">
-        <object class="wxStaticBoxSizer">
-          <object class="sizeritem">
-            <object class="wxBoxSizer">
-              <object class="sizeritem">
-                <object class="wxChoice" name="PLUGIN_CHOICE"/>
-                <flag>wxEXPAND</flag>
-              </object>
-              <object class="sizeritem">
-                <object class="wxPanel" name="PLUGIN_PANEL"/>
-                <flag>wxEXPAND</flag>
-                <minsize>100,100</minsize>
-              </object>
-              <orient>wxVERTICAL</orient>
-            </object>
-            <option>1</option>
-            <flag>wxEXPAND</flag>
-          </object>
-          <label>stimulus plugins</label>
-          <orient>wxHORIZONTAL</orient>
-        </object>
-        <flag>wxEXPAND</flag>
-      </object>
       <object class="sizeritem">
         <object class="wxNotebook">
           <object class="notebookpage">
             <object class="wxPanel">
               <object class="wxBoxSizer">
                 <object class="sizeritem">
-                  <object class="wxCheckBox" name="DRAW_MASK_REGION">
-                    <label>Draw mask region</label>
-                  </object>
-                </object>
-                <object class="sizeritem">
                   <object class="wxPanel" name="MASKDATA_PARAMS_PANEL"/>
                   <flag>wxEXPAND</flag>
                 </object>
                 <orient>wxVERTICAL</orient>
-                <object class="sizeritem">
-                  <object class="wxPanel" name="LEFT_LIVEVIEW_PANEL"/>
-                  <option>1</option>
-                  <flag>wxEXPAND</flag>
-                  <minsize>100,100</minsize>
-                </object>
-                <object class="sizeritem">
-                  <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
-                  <option>1</option>
-                  <flag>wxEXPAND</flag>
-                  <minsize>100,100</minsize>
-                </object>
                 <object class="sizeritem">
                   <object class="wxBoxSizer">
                     <object class="sizeritem">
@@ -93,6 +45,21 @@
                   <flag>wxALL|wxEXPAND|wxALIGN_CENTRE_HORIZONTAL</flag>
                   <border>5</border>
                 </object>
+                <object class="sizeritem">
+                  <object class="wxBoxSizer">
+                    <orient>wxHORIZONTAL</orient>
+                    <object class="sizeritem">
+                      <object class="wxCheckBox" name="DRAW_MASK_REGION">
+                        <label>Draw mask region</label>
+                      </object>
+                    </object>
+                    <object class="sizeritem">
+                      <object class="wxButton" name="RECOMPUTE_MASK">
+                        <label>recompute mask</label>
+                      </object>
+                    </object>
+                  </object>
+                </object>
               </object>
             </object>
             <label>Image regions</label>
@@ -100,22 +67,33 @@
           <object class="notebookpage">
             <object class="wxPanel">
               <object class="wxBoxSizer">
-                <orient>wxVERTICAL</orient>
                 <object class="sizeritem">
-                  <object class="wxStaticText">
-                    <label>(Not yet implemented.)</label>
-                    <enabled>0</enabled>
-                  </object>
-                  <option>1</option>
-                  <flag>wxEXPAND|wxALIGN_CENTRE|wxALIGN_CENTRE_VERTICAL|wxALIGN_CENTRE_HORIZONTAL</flag>
+                  <object class="wxChoice" name="PLUGIN_CHOICE"/>
+                  <flag>wxEXPAND</flag>
                 </object>
+                <object class="sizeritem">
+                  <object class="wxPanel" name="PLUGIN_PANEL"/>
+                  <flag>wxEXPAND</flag>
+                  <minsize>100,100</minsize>
+                </object>
+                <orient>wxVERTICAL</orient>
               </object>
             </object>
-            <label>Another page</label>
+            <label>Stimulus</label>
           </object>
         </object>
         <option>1</option>
         <flag>wxEXPAND</flag>
+      </object>
+      <object class="sizeritem">
+        <object class="wxPanel" name="LEFT_LIVEVIEW_PANEL"/>
+        <flag>wxEXPAND</flag>
+        <minsize>200,60</minsize>
+      </object>
+      <object class="sizeritem">
+        <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
+        <flag>wxEXPAND</flag>
+        <minsize>200,60</minsize>
       </object>
     </object>
     <title>Stroke Amplitude</title>
