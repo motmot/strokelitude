@@ -21,9 +21,14 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
 from enthought.enable.api import Component, Container
 from enthought.enable.wx_backend.api import Window
 from enthought.chaco.api import DataView, ArrayDataSource, ScatterPlot, \
-     LinePlot, LinearMapper
+     LinePlot, LinearMapper, ArrayPlotData, Plot, gray
+import enthought.chaco.default_colormaps as default_colormaps
+from enthought.chaco.data_range_1d import DataRange1D
 from enthought.chaco.api import create_line_plot, add_default_axes, \
      add_default_grids
+from enthought.chaco.tools.api import PanTool, ZoomTool
+from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
+     ImageInspectorOverlay
 
 # trigger extraction
 RESFILE = pkg_resources.resource_filename(__name__,"strokelitude.xrc")
@@ -31,6 +36,7 @@ RES = xrc.EmptyXmlResource()
 RES.LoadFromString(open(RESFILE).read())
 
 DataReadyEvent = wx.NewEventType()
+BGReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
 
@@ -351,14 +357,16 @@ class StrokelitudeClass(traits.HasTraits):
     Because this class implements everything necessary to be a valid
     fview plugin, some of the methods here are necessary.
     """
-    mask_dirty = traits.Bool(True) # True the mask parameters changed
+    mask_dirty = traits.Bool(False) # let __init__ set True
     maskdata = traits.Instance(MaskData)
 
     def _mask_dirty_changed(self):
         if self.mask_dirty:
             self.enabled_box.SetValue(False)
+            self.enabled_box.Enable(False)
             self.recompute_mask_button.Enable(True)
         else:
+            self.enabled_box.Enable(True)
             self.recompute_mask_button.Enable(False)
 
     def __init__(self,wx_parent):
@@ -384,6 +392,8 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata.on_trait_change( self.on_mask_change )
         self.vals_queue = Queue.Queue()
         self.bg_queue = Queue.Queue()
+        self.new_bg_image_lock = threading.Lock()
+        self.new_bg_image = None
 
         self.recomputing_lock = threading.Lock()
         self.current_plugin_name = None # nothing loaded
@@ -466,13 +476,44 @@ class StrokelitudeClass(traits.HasTraits):
                 sizer.Add(control, 1, wx.EXPAND)
                 panel.SetSizer( sizer )
                 #control.GetParent().SetMinSize(control.GetMinSize())
+        if 1:
+            # a temporary initial background image
+            image = np.zeros((640,480), dtype=np.uint8)
+
+            # Create a plot data obect and give it this data
+            pd = ArrayPlotData()
+            pd.set_data("imagedata", image)
+            self.bg_pd = pd
+
+            # Create the plot
+            plot = Plot(pd, default_origin="top left")
+            plot.x_axis.orientation = "top"
+            colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
+            img_plot = plot.img_plot("imagedata",colormap=colormap)[0]
+
+            plot.padding = 10
+            plot.bgcolor = "white"
+
+            # Attach some tools to the plot
+            plot.tools.append(PanTool(plot, constrain_key="shift"))
+            plot.overlays.append(ZoomTool(component=plot,
+                                            tool_mode="box", always_on=False))
+
+            component = plot
+
+            panel = xrc.XRCCTRL(self.frame,'BACKGROUND_IMAGE_PANEL')
+            sizer = wx.BoxSizer(wx.HORIZONTAL)
+            self.bg_window = Window( panel, -1, component = component )
+            control = self.bg_window.control
+            sizer.Add(control, 1, wx.EXPAND)
+            panel.SetSizer( sizer )
+
 
         self.cam_id = None
         self.width = 20
         self.height = 10
 
         self.frame.Fit()
-        self.mask_dirty=True
 
         self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
         wx.EVT_BUTTON(self.recompute_mask_button,
@@ -487,6 +528,8 @@ class StrokelitudeClass(traits.HasTraits):
         self.enabled_box = xrc.XRCCTRL(self.frame,'ENABLE_PROCESSING')
 
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
+        self.frame.Connect( -1, -1, BGReadyEvent, self.OnNewBGReady )
+        self.mask_dirty = True
 
     def OnChoosePlugin(self,event):
         choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
@@ -607,13 +650,23 @@ class StrokelitudeClass(traits.HasTraits):
                 except Queue.Empty, err:
                     break
 
+            bg_image_changed = False
             this_image = np.asarray(buf)
             if command == 'clear':
+                bg_image_changed = True
                 self.bg_image = np.zeros_like( this_image )
-                self.mask_dirty = True # naughty to cross thread boundary
             elif command == 'take':
+                bg_image_changed = True
                 self.bg_image = np.array( this_image, copy=True )
-                self.mask_dirty = True # naughty to cross thread boundary
+            if bg_image_changed:
+                with self.new_bg_image_lock:
+                    self.new_bg_image = np.array( self.bg_image, copy=True )
+
+                event = wx.CommandEvent(BGReadyEvent)
+                event.SetEventObject(self.frame)
+
+                # trigger call to self.OnDataReady
+                wx.PostEvent(self.frame, event)
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
             if self.enabled_box.GetValue() and not self.mask_dirty:
@@ -727,10 +780,18 @@ class StrokelitudeClass(traits.HasTraits):
         return draw_points, draw_linesegs
 
     def OnTakeBg(self,event):
+        self.mask_dirty = True
         self.bg_queue.put('take')
 
     def OnClearBg(self,event):
+        self.mask_dirty = True
         self.bg_queue.put('clear')
+
+    def OnNewBGReady(self,event):
+        with self.new_bg_image_lock:
+            new_bg_image = self.new_bg_image
+            self.new_bg_image = None
+        self.bg_pd.set_data("imagedata", new_bg_image)
 
     def OnDataReady(self, event):
         lrvals = None
@@ -775,8 +836,9 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata.maxx = self.width
         self.maskdata.maxy = self.height
 
-        self.bg_image = np.zeros( (max_height, max_width),
-                                  dtype=np.uint8)
+        self.OnClearBg(None)
+        ## self.bg_image = np.zeros( (max_height, max_width),
+        ##                           dtype=np.uint8)
 
 if __name__=='__main__':
 

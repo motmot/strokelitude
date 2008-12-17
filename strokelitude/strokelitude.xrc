@@ -5,19 +5,22 @@
       <orient>wxVERTICAL</orient>
       <object class="sizeritem">
         <object class="wxBoxSizer">
+          
+          <orient>wxHORIZONTAL</orient>
+          <object class="sizeritem">
+            <object class="wxButton" name="RECOMPUTE_MASK">
+              <label>recompute mask</label>
+            </object>
+          </object>
           <object class="sizeritem">
             <object class="wxCheckBox" name="ENABLE_PROCESSING">
               <label>Enable processing</label>
             </object>
-            <flag>wxALL|wxALIGN_CENTRE</flag>
-            <border>5</border>
           </object>
-          <orient>wxHORIZONTAL</orient>
         </object>
         <flag>wxALL|wxALIGN_CENTRE_HORIZONTAL</flag>
         <border>5</border>
       </object>
-      
       <object class="sizeritem">
         <object class="wxNotebook">
           <object class="notebookpage">
@@ -30,34 +33,13 @@
                 <orient>wxVERTICAL</orient>
                 <object class="sizeritem">
                   <object class="wxBoxSizer">
-                    <object class="sizeritem">
-                      <object class="wxButton" name="TAKE_BG_BUTTON">
-                        <label>Take background image</label>
-                      </object>
-                    </object>
-                    <object class="sizeritem">
-                      <object class="wxButton" name="CLEAR_BG_BUTTON">
-                        <label>Clear background image</label>
-                      </object>
-                    </object>
-                    <orient>wxHORIZONTAL</orient>
-                  </object>
-                  <flag>wxALL|wxEXPAND|wxALIGN_CENTRE_HORIZONTAL</flag>
-                  <border>5</border>
-                </object>
-                <object class="sizeritem">
-                  <object class="wxBoxSizer">
                     <orient>wxHORIZONTAL</orient>
                     <object class="sizeritem">
                       <object class="wxCheckBox" name="DRAW_MASK_REGION">
                         <label>Draw mask region</label>
                       </object>
                     </object>
-                    <object class="sizeritem">
-                      <object class="wxButton" name="RECOMPUTE_MASK">
-                        <label>recompute mask</label>
-                      </object>
-                    </object>
+                  
                   </object>
                 </object>
               </object>
@@ -80,6 +62,34 @@
               </object>
             </object>
             <label>Stimulus</label>
+          </object>
+          <object class="notebookpage">
+            <object class="wxPanel">
+              <object class="wxBoxSizer">
+                <orient>wxVERTICAL</orient>
+                <object class="sizeritem">
+                  <object class="wxBoxSizer">
+                    <object class="sizeritem">
+                      <object class="wxButton" name="TAKE_BG_BUTTON">
+                        <label>Take background image</label>
+                      </object>
+                    </object>
+                    <object class="sizeritem">
+                      <object class="wxButton" name="CLEAR_BG_BUTTON">
+                        <label>Clear background image</label>
+                      </object>
+                    </object>
+                    <orient>wxHORIZONTAL</orient>
+                  </object>
+                </object>
+                <object class="sizeritem">
+                  <object class="wxPanel" name="BACKGROUND_IMAGE_PANEL"/>
+                  <option>1</option>
+                  <flag>wxEXPAND</flag>
+                </object>
+              </object>
+            </object>
+            <label>Background image</label>
           </object>
         </object>
         <option>1</option>
