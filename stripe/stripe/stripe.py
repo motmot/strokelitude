@@ -64,10 +64,11 @@ class StripeClassWorker(StripeClass):
             (cam_id,timestamp,framenumber,results,
              trigger_timestamp) = last_data
             left_angle_radians, right_angle_radians = results
-            #L = left_angle_radians*R2D
-            #R = right_angle_radians*R2D
-            diff_radians = left_angle_radians + right_angle_radians # (opposite signs already from angle measurement)
-            self.last_diff_radians = diff_radians
+            if not (left_angle_radians is None or right_angle_radians is None):
+                #L = left_angle_radians*R2D
+                #R = right_angle_radians*R2D
+                diff_radians = left_angle_radians + right_angle_radians # (opposite signs already from angle measurement)
+                self.last_diff_radians = diff_radians
 
         # update self.vel every frame so that changes in gain and offset noticed
         self.vel = self.last_diff_radians*self.gain + self.offset
