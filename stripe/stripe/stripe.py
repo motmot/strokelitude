@@ -61,7 +61,8 @@ class StripeClassWorker(StripeClass):
 
         # Update stripe velocity if new data arrived.
         if last_data is not None:
-            (cam_id,timestamp,framenumber,results) = last_data
+            (cam_id,timestamp,framenumber,results,
+             trigger_timestamp) = last_data
             left_angle_radians, right_angle_radians = results
             #L = left_angle_radians*R2D
             #R = right_angle_radians*R2D
