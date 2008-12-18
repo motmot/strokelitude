@@ -99,7 +99,7 @@ class MaskData(traits.HasTraits):
 
     # The bounds of these should be dynamically set
     r1 = traits.Range(0.0, 656.0, 22.0, mode='slider', set_enter=True)
-    r2 = traits.Float(80.0)
+    r2 = traits.Range(0.0, 656.0, 22.0, mode='slider', set_enter=True)
 
     # angles, in degrees
     alpha = traits.Range(0.0, 180.0, 14.0, mode='slider', set_enter=True)
@@ -165,19 +165,12 @@ class MaskData(traits.HasTraits):
                                       ),
                                  Item('r1',style='custom',
                                       ),
-                                 Item('r2',
-                                      editor=RangeEditor(low_name='r1',
-                                                         high_name='maxdim',
-                                                         format='%.1f',
-                                                         label_width=50,
-                                                         ),
+                                 Item('r2',style='custom',
                                       ),
                                  Item('alpha',style='custom'),
                                  Item('beta',style='custom'),
                                  Item('gamma',style='custom'),
                                  ),
-                               orientation = 'horizontal',
-                               show_border = False,
                                ),
                         title = 'Mask Parameters',
                         )
@@ -359,12 +352,24 @@ class StrokelitudeClass(traits.HasTraits):
     """
     mask_dirty = traits.Bool(False) # let __init__ set True
     maskdata = traits.Instance(MaskData)
+
     latency_msec = traits.Float()
+    analyze_nth_frame = traits.Int(5)
+    threshold_fraction = traits.Float()
+    light_on_dark = traits.Bool(True)
 
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
-                                    )))
+                                    ),
+                               Item(name='analyze_nth_frame',
+                                    label='analyze Nth frame',
+                                    ),
+                               Item(name='threshold_fraction',
+                                    ),
+                               Item(name='light_on_dark',
+                                    ),
+                               ))
 
     def _mask_dirty_changed(self):
         if not hasattr(self,'enabled_box'):
@@ -382,6 +387,7 @@ class StrokelitudeClass(traits.HasTraits):
         super(StrokelitudeClass,self).__init__(*args,**kwargs)
         self.wx_parent = wx_parent
         self.timestamp_modeler = None
+        self.drawsegs_cache = None
 
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
@@ -680,117 +686,146 @@ class StrokelitudeClass(traits.HasTraits):
                 wx.PostEvent(self.frame, event)
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
-            if self.enabled_box.GetValue() and not self.mask_dirty:
+            processing_OK = (framenumber%self.analyze_nth_frame)==0
+            if (self.enabled_box.GetValue() and
+                not self.mask_dirty):
+                if processing_OK:
+                    self.drawsegs_cache = []
 
-                h,w = this_image.shape
-                if not (self.width==w and self.height==h):
-                    warnings.warn('no ROI support for calculating stroke '
-                                  'amplitude')
+                    h,w = this_image.shape
+                    if not (self.width==w and self.height==h):
+                        warnings.warn('no ROI support for calculating stroke '
+                                      'amplitude')
 
-                    tmp = self._sparse_roi_cache
+                        tmp = self._sparse_roi_cache
 
-                    cache_ok = False
-                    if tmp is not None:
-                        (old_timestamp, old_offset, old_wh, left, right) = tmp
-                        if (old_timestamp == self._recomputed_timestamp and
-                            old_offset == buf_offset and
-                            old_wh == (w,h) ):
+                        cache_ok = False
+                        if tmp is not None:
+                            (old_timestamp, old_offset, old_wh, left, right) = tmp
+                            if (old_timestamp == self._recomputed_timestamp and
+                                old_offset == buf_offset and
+                                old_wh == (w,h) ):
 
-                            left_mat_sparse = left
-                            right_mat_sparse = right
-                            cache_ok = True
-                    if not cache_ok:
-                        left_mat_sparse = resample_sparse(
-                            self.left_mat_sparse,
-                            self.height,
-                            self.width,
-                            buf_offset,
-                            h,w )
-                        right_mat_sparse = resample_sparse(
-                            self.right_mat_sparse,
-                            self.height,
-                            self.width,
-                            buf_offset,
-                            h,w )
-                        self._sparse_roi_cache = ( self._recomputed_timestamp,
-                                                   buf_offset,
-                                                   (w,h),
-                                                   left_mat_sparse,
-                                                   right_mat_sparse )
+                                left_mat_sparse = left
+                                right_mat_sparse = right
+                                cache_ok = True
+                        if not cache_ok:
+                            left_mat_sparse = resample_sparse(
+                                self.left_mat_sparse,
+                                self.height,
+                                self.width,
+                                buf_offset,
+                                h,w )
+                            right_mat_sparse = resample_sparse(
+                                self.right_mat_sparse,
+                                self.height,
+                                self.width,
+                                buf_offset,
+                                h,w )
+                            self._sparse_roi_cache = ( self._recomputed_timestamp,
+                                                       buf_offset,
+                                                       (w,h),
+                                                       left_mat_sparse,
+                                                       right_mat_sparse )
 
-                    raise NotImplementedError('need to support background '
-                                              'images for ROI')
+                        raise NotImplementedError('need to support background '
+                                                  'images for ROI')
 
+                    else:
+                        left_mat_sparse = self.left_mat_sparse
+                        right_mat_sparse = self.right_mat_sparse
+
+                        bg_left_vec = self.bg_left_vec
+                        bg_right_vec = self.bg_right_vec
+
+                    this_image_flat = this_image.ravel()
+
+                    left_vals  = left_mat_sparse  * this_image_flat
+                    right_vals = right_mat_sparse * this_image_flat
+
+                    left_vals = left_vals - bg_left_vec
+                    right_vals = right_vals - bg_right_vec
+
+                    results = []
+                    for side in ('left','right'):
+                        if side=='left':
+                            vals = left_vals
+                        else:
+                            vals = right_vals
+                        ## if not self.light_on_dark:
+                        ##     vals = -vals
+
+                        min_val = vals.min()
+                        mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
+                        if min_val==mid_val:
+                            # no variation in luminance
+                            interp_idx = 0.0
+                        else:
+                            if self.light_on_dark:
+                                all_idxs = np.nonzero(vals>=mid_val)[0]
+                                assert len(all_idxs) > 0
+                                second_idx = all_idxs[0]
+                                first_idx = second_idx - 1
+                            else:
+                                all_idxs = np.nonzero(vals<=mid_val)[0]
+                                try:
+                                    assert len(all_idxs) > 0
+                                except:
+                                    print
+                                    print 'vals',vals
+                                    print 'mid_val',mid_val
+                                    print 'np.nonzero(vals<=mid_val)[0]',np.nonzero(vals<=mid_val)[0]
+                                    print 'all_idxs',all_idxs
+                                    print
+                                    raise
+                                second_idx = all_idxs[0]
+                                first_idx = second_idx - 1
+                            if first_idx==-1:
+                                interp_idx = 0.0
+                            else:
+                                # slope (indices are unity apart)
+                                # y = mx+b
+                                m = vals[second_idx] - vals[first_idx]
+                                b = vals[first_idx] - m*first_idx
+                                interp_idx = (mid_val-b)/m
+
+                        #latency_sec = time.time()-timestamp
+                        #print 'msec % 5.1f'%(latency_sec*1000.0,)
+
+                        angle_radians = self.maskdata.index2angle(side,
+                                                                  interp_idx)
+                        results.append( angle_radians )
+
+                        # draw lines
+                        this_seg = self.maskdata.get_span_lineseg(side,angle_radians)
+                        draw_linesegs.extend(this_seg)
+                        self.drawsegs_cache.extend( this_seg )
+
+                    if trigger_timestamp is not None:
+                        now = time.time()
+                        self.latency_msec = (now-trigger_timestamp)*1000.0
+
+                    if self.current_plugin_queue is not None:
+                        self.current_plugin_queue.put(
+                            (cam_id,timestamp,framenumber,results,
+                            trigger_timestamp) )
+
+                    ## for queue in self.plugin_data_queues:
+                    ##     queue.put( (cam_id,timestamp,framenumber,results) )
+
+                    # send values from each quad to be drawn
+                    self.vals_queue.put( (left_vals, right_vals) )
+                    event = wx.CommandEvent(DataReadyEvent)
+                    event.SetEventObject(self.frame)
+
+                    # trigger call to self.OnDataReady
+                    wx.PostEvent(self.frame, event)
                 else:
-                    left_mat_sparse = self.left_mat_sparse
-                    right_mat_sparse = self.right_mat_sparse
+                    if self.drawsegs_cache is not None:
+                        draw_linesegs.extend( self.drawsegs_cache )
 
-                    bg_left_vec = self.bg_left_vec
-                    bg_right_vec = self.bg_right_vec
-
-                this_image_flat = this_image.ravel()
-
-                left_vals  = left_mat_sparse  * this_image_flat
-                right_vals = right_mat_sparse * this_image_flat
-
-                left_vals = left_vals - bg_left_vec
-                right_vals = right_vals - bg_right_vec
-
-                results = []
-                for side in ('left','right'):
-                    if side=='left':
-                        vals = left_vals
-                    else:
-                        vals = right_vals
-
-                    min_val = vals.min()
-                    mid_val = (min_val + vals.max())/2
-                    if min_val==mid_val:
-                        continue
-                    all_idxs = np.nonzero(vals>=mid_val)[0]
-                    assert len(all_idxs) > 0
-                    second_idx = all_idxs[0]
-                    first_idx = second_idx - 1
-                    if first_idx==-1:
-                        interp_idx = 0.0
-                    else:
-                        # slope (indices are unity apart)
-                        # y = mx+b
-                        m = vals[second_idx] - vals[first_idx]
-                        b = vals[first_idx] - m*first_idx
-                        interp_idx = (mid_val-b)/m
-
-                    #latency_sec = time.time()-timestamp
-                    #print 'msec % 5.1f'%(latency_sec*1000.0,)
-
-                    angle_radians = self.maskdata.index2angle(side,
-                                                              interp_idx)
-                    results.append( angle_radians )
-
-                    # draw lines
-                    draw_linesegs.extend(
-                        self.maskdata.get_span_lineseg(side,angle_radians))
-
-                if trigger_timestamp is not None:
-                    now = time.time()
-                    self.latency_msec = (now-trigger_timestamp)*1000.0
-
-                if self.current_plugin_queue is not None:
-                    self.current_plugin_queue.put(
-                        (cam_id,timestamp,framenumber,results,
-                        trigger_timestamp) )
-
-                ## for queue in self.plugin_data_queues:
-                ##     queue.put( (cam_id,timestamp,framenumber,results) )
-
-                # send values from each quad to be drawn
-                self.vals_queue.put( (left_vals, right_vals) )
-                event = wx.CommandEvent(DataReadyEvent)
-                event.SetEventObject(self.frame)
-
-                # trigger call to self.OnDataReady
-                wx.PostEvent(self.frame, event)
             else:
+                self.drawsegs_cache = None
                 if trigger_timestamp is not None:
                     now = time.time()
                     self.latency_msec = (now-trigger_timestamp)*1000.0
