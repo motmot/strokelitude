@@ -355,7 +355,7 @@ class StrokelitudeClass(traits.HasTraits):
 
     latency_msec = traits.Float()
     analyze_nth_frame = traits.Int(5)
-    threshold_fraction = traits.Float()
+    threshold_fraction = traits.Float(0.5)
     light_on_dark = traits.Bool(True)
 
     traits_view = View( Group( Item(name='latency_msec',
@@ -752,36 +752,24 @@ class StrokelitudeClass(traits.HasTraits):
                             vals = left_vals
                         else:
                             vals = right_vals
-                        ## if not self.light_on_dark:
-                        ##     vals = -vals
+
+                        if not self.light_on_dark:
+                            vals = -vals
 
                         min_val = vals.min()
                         mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
                         if min_val==mid_val:
                             # no variation in luminance
-                            interp_idx = 0.0
+                            interp_idx = -1
                         else:
-                            if self.light_on_dark:
-                                all_idxs = np.nonzero(vals>=mid_val)[0]
-                                assert len(all_idxs) > 0
-                                second_idx = all_idxs[0]
-                                first_idx = second_idx - 1
-                            else:
-                                all_idxs = np.nonzero(vals<=mid_val)[0]
-                                try:
-                                    assert len(all_idxs) > 0
-                                except:
-                                    print
-                                    print 'vals',vals
-                                    print 'mid_val',mid_val
-                                    print 'np.nonzero(vals<=mid_val)[0]',np.nonzero(vals<=mid_val)[0]
-                                    print 'all_idxs',all_idxs
-                                    print
-                                    raise
-                                second_idx = all_idxs[0]
-                                first_idx = second_idx - 1
-                            if first_idx==-1:
-                                interp_idx = 0.0
+                            first_idx=None
+                            for i in range(len(vals)-1):
+                                if (vals[i] < mid_val) and (vals[i+1] >= mid_val):
+                                    first_idx = i
+                                    second_idx = i+1
+                                    break
+                            if first_idx is None:
+                                interp_idx = -1
                             else:
                                 # slope (indices are unity apart)
                                 # y = mx+b
@@ -792,14 +780,17 @@ class StrokelitudeClass(traits.HasTraits):
                         #latency_sec = time.time()-timestamp
                         #print 'msec % 5.1f'%(latency_sec*1000.0,)
 
-                        angle_radians = self.maskdata.index2angle(side,
-                                                                  interp_idx)
-                        results.append( angle_radians )
+                        if interp_idx != -1:
+                            angle_radians = self.maskdata.index2angle(side,
+                                                                      interp_idx)
+                            results.append( angle_radians )
 
-                        # draw lines
-                        this_seg = self.maskdata.get_span_lineseg(side,angle_radians)
-                        draw_linesegs.extend(this_seg)
-                        self.drawsegs_cache.extend( this_seg )
+                            # draw lines
+                            this_seg = self.maskdata.get_span_lineseg(side,angle_radians)
+                            draw_linesegs.extend(this_seg)
+                            self.drawsegs_cache.extend( this_seg )
+                        else:
+                            results.append( None )
 
                     if trigger_timestamp is not None:
                         now = time.time()
