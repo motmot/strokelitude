@@ -5,7 +5,6 @@
       <orient>wxVERTICAL</orient>
       <object class="sizeritem">
         <object class="wxBoxSizer">
-          
           <orient>wxHORIZONTAL</orient>
           <object class="sizeritem">
             <object class="wxButton" name="RECOMPUTE_MASK">
@@ -39,7 +38,6 @@
                         <label>Draw mask region</label>
                       </object>
                     </object>
-                  
                   </object>
                 </object>
               </object>
@@ -104,6 +102,11 @@
         <object class="wxPanel" name="RIGHT_LIVEVIEW_PANEL"/>
         <flag>wxEXPAND</flag>
         <minsize>200,60</minsize>
+      </object>
+      <object class="sizeritem">
+        <object class="wxPanel" name="LATENCY_SHOW_PANEL"/>
+        <flag>wxEXPAND</flag>
+        <minsize>200,25</minsize>
       </object>
     </object>
     <title>Stroke Amplitude</title>

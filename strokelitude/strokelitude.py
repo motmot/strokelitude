@@ -359,8 +359,17 @@ class StrokelitudeClass(traits.HasTraits):
     """
     mask_dirty = traits.Bool(False) # let __init__ set True
     maskdata = traits.Instance(MaskData)
+    latency_msec = traits.Float()
+
+    traits_view = View( Group( Item(name='latency_msec',
+                                    label='latency (msec)',
+                                    style='readonly',
+                                    )))
 
     def _mask_dirty_changed(self):
+        if not hasattr(self,'enabled_box'):
+            # not initialized yet...
+            return
         if self.mask_dirty:
             self.enabled_box.SetValue(False)
             self.enabled_box.Enable(False)
@@ -369,8 +378,10 @@ class StrokelitudeClass(traits.HasTraits):
             self.enabled_box.Enable(True)
             self.recompute_mask_button.Enable(False)
 
-    def __init__(self,wx_parent):
+    def __init__(self,wx_parent,*args,**kwargs):
+        super(StrokelitudeClass,self).__init__(*args,**kwargs)
         self.wx_parent = wx_parent
+        self.timestamp_modeler = None
 
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
@@ -417,24 +428,6 @@ class StrokelitudeClass(traits.HasTraits):
                 del self.plugins[1:]
 
             self.quit_plugin_event = threading.Event()
-            ## if len(self.plugins):
-            ##     plugin = self.plugins[0]
-
-            ##     panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
-            ##     sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-            ##     control = plugin.edit_traits( parent=panel,
-            ##                                   kind='subpanel',
-            ##                                   ).control
-            ##     sizer.Add(control, 1, wx.EXPAND)
-            ##     panel.SetSizer( sizer )
-            ##     control.GetParent().SetMinSize(control.GetMinSize())
-
-            ##     plugin_thread = PluginHandlerThread(plugin,
-            ##                                         self.quit_plugin_event)
-            ##     # don't let this thread keep app alive
-            ##     plugin_thread.setDaemon(True)
-            ##     plugin_thread.start()
 
         if 1:
             # setup maskdata parameter panel
@@ -508,6 +501,17 @@ class StrokelitudeClass(traits.HasTraits):
             sizer.Add(control, 1, wx.EXPAND)
             panel.SetSizer( sizer )
 
+        if 1:
+            # latency show panel
+            panel = xrc.XRCCTRL(self.frame,'LATENCY_SHOW_PANEL')
+            sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+            control = self.edit_traits( parent=panel,
+                                        kind='subpanel',
+                                        ).control
+            sizer.Add(control, 1, wx.EXPAND)
+            panel.SetSizer( sizer )
+            control.GetParent().SetMinSize(control.GetMinSize())
 
         self.cam_id = None
         self.width = 20
@@ -629,9 +633,16 @@ class StrokelitudeClass(traits.HasTraits):
         draw_points = [] #  [ (x,y) ]
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
+        if self.timestamp_modeler is not None:
+            trigger_timestamp = self.timestamp_modeler.register_frame(
+                cam_id,framenumber,timestamp)
+        else:
+            trigger_timestamp = None
+
         have_lock = self.recomputing_lock.acquire(False) # don't block
         if not have_lock:
             return draw_points, draw_linesegs
+
         try:
             if self.draw_mask_ctrl.IsChecked():
                 # XXX this is naughty -- it's not threasafe.
@@ -760,9 +771,14 @@ class StrokelitudeClass(traits.HasTraits):
                     draw_linesegs.extend(
                         self.maskdata.get_span_lineseg(side,angle_radians))
 
+                if trigger_timestamp is not None:
+                    now = time.time()
+                    self.latency_msec = (now-trigger_timestamp)*1000.0
+
                 if self.current_plugin_queue is not None:
                     self.current_plugin_queue.put(
-                        (cam_id,timestamp,framenumber,results) )
+                        (cam_id,timestamp,framenumber,results,
+                        trigger_timestamp) )
 
                 ## for queue in self.plugin_data_queues:
                 ##     queue.put( (cam_id,timestamp,framenumber,results) )
@@ -774,6 +790,11 @@ class StrokelitudeClass(traits.HasTraits):
 
                 # trigger call to self.OnDataReady
                 wx.PostEvent(self.frame, event)
+            else:
+                if trigger_timestamp is not None:
+                    now = time.time()
+                    self.latency_msec = (now-trigger_timestamp)*1000.0
+
         finally:
             self.recomputing_lock.release()
 
@@ -822,6 +843,11 @@ class StrokelitudeClass(traits.HasTraits):
 
         plugin = self.name2plugin[self.current_plugin_name]
         plugin.shutdown()
+
+    def set_all_fview_plugins(self,plugins):
+        for plugin in plugins:
+            if plugin.get_plugin_name()=='FView external trigger':
+                self.timestamp_modeler = plugin.timestamp_modeler
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
