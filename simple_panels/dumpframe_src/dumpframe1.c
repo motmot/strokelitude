@@ -15,8 +15,10 @@ USBPacketArrayWrapper_t USBPacketArray;
 PanelArrayWrapper_t     PanelArray;
 FrameImageWrapper_t     FrameImage;
 
-int display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
+dumpframe_error_t display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
 {
+    dumpframe_error_t err;
+
     /* Convert input image to size and shape necessary to display on panels */
     InputImage2FrameImage(data, stride0, shape0, shape1, offset0, offset1 );
 
@@ -30,7 +32,8 @@ int display_frame( void * data, intp stride0, intp shape0, intp shape1, intp off
     PanelArray2USBPacketArray();
 
     /* usb_bulk_write every usb packet in USBPacketArray */
-    USBBulkWriteUSBPacketArray();
+    err = USBBulkWriteUSBPacketArray();
+    return err;
 }
 
 static void InputImage2FrameImage( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
@@ -219,7 +222,7 @@ static usb_dev_handle *OpenUSBDev(void)
     return NULL;
 }
 
-static void USBBulkWriteUSBPacketArray(void)
+static dumpframe_error_t USBBulkWriteUSBPacketArray(void)
 {
     usb_dev_handle *dev = NULL;                 /* Device handle */
     unsigned char bytesWritten,packetN,outBufSize;
@@ -230,22 +233,17 @@ static void USBBulkWriteUSBPacketArray(void)
 
     if(!(dev = OpenUSBDev()))
     {
-        printf("Error: Device not found!\n");
-        return;
+      return DUMPFRAME_USB_DEVICE_NOT_FOUND;
     }
 
     if(usb_set_configuration(dev, 1) < 0)
     {
-        printf("Error: Setting config 1 failed\n");
-        usb_close(dev);
-        return;
+      return DUMPFRAME_USB_SET_CONFIG_FAILED;
     }
 
     if(usb_claim_interface(dev, 0) < 0)
     {
-        printf("Error: Claiming interface 0 failed\n");
-        usb_close(dev);
-        return;
+      return DUMPFRAME_USB_CLAIM_INTERFACE_FAILED;
     }
 
     for (packetN = 0; packetN<USBPacketArray.PacketsInThisArray; packetN++) {
@@ -253,7 +251,7 @@ static void USBBulkWriteUSBPacketArray(void)
         bytesWritten = usb_bulk_write(dev, USB_EP_OUT_NUM, USBPacketArray.Packet[packetN].Data, outBufSize, 5000);
         if(bytesWritten != outBufSize)
         {
-            printf("Error: Bulk write failed\n");
+          return DUMPFRAME_USB_BULK_WRITE_FAILED;
         }
     }
     /*
@@ -267,7 +265,7 @@ static void USBBulkWriteUSBPacketArray(void)
     usb_release_interface(dev, 0);
     usb_close(dev);
 
-    return;
+    return DUMPFRAME_SUCCESS;
 }
 
 void say_hello() {

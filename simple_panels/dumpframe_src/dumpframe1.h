@@ -82,6 +82,15 @@
 			unsigned char ImageMatrix[FRAME_PANEL_ROW_NUM*PANEL_PIXEL_NUM][FRAME_PANEL_COL_NUM*PANEL_PIXEL_NUM];
 		} FrameImageWrapper_t;
 
+typedef enum {
+  DUMPFRAME_SUCCESS = 0,
+  DUMPFRAME_FAILURE = -1,
+  DUMPFRAME_USB_DEVICE_NOT_FOUND = -2,
+  DUMPFRAME_USB_SET_CONFIG_FAILED = -3,
+  DUMPFRAME_USB_CLAIM_INTERFACE_FAILED = -4,
+  DUMPFRAME_USB_BULK_WRITE_FAILED = -5
+} dumpframe_error_t;
+
 	/* Global Variables: */
 		extern USBPacketArrayWrapper_t  USBPacketArray;
         extern PanelArrayWrapper_t      PanelArray;
@@ -94,13 +103,13 @@
 
 	/* Function Prototypes: */
 		#if defined(INCLUDE_FROM_PROCESSIMAGESEND2PANELS_C)
-            int display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 );
+            dumpframe_error_t display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 );
             static void InputImage2FrameImage( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 );
             static void MapFrameImage2PanelArray(void);
             static void ConvertFrameImage2PanelMessages(void);
             static void PanelArray2USBPacketArray(void);
             static usb_dev_handle *OpenUSBDev(void);
-            static void USBBulkWriteUSBPacketArray(void);
+            static dumpframe_error_t USBBulkWriteUSBPacketArray(void);
             void say_hello();
 		#endif
 #endif
