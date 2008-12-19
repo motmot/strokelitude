@@ -169,6 +169,7 @@ class StripeClassWorker(StripeClass):
         self.stripe_pos_degrees = 0.0
         self.vel_dps = 0.0
         self.last_frame = 0
+        self.receive_timestamp = 0.0
         self.trigger_timestamp = 0
         self.arr = np.zeros( (self.panel_height*8, self.panel_width*8),
                               dtype=np.uint8)
@@ -224,8 +225,9 @@ class StripeClassWorker(StripeClass):
             (framenumber,
              left_angle_degrees, right_angle_degrees,
              trigger_timestamp) = last_data
-            self.frame = framenumber
+            self.last_frame = framenumber
             self.trigger_timestamp = trigger_timestamp
+            self.receive_timestamp = time.time()
             if not (np.isnan(left_angle_degrees) or np.isnan(right_angle_degrees)):
                 diff_degrees = left_angle_degrees + right_angle_degrees # (opposite signs already from angle measurement)
                 self.last_diff_degrees = diff_degrees
@@ -256,6 +258,8 @@ class StripeClassWorker(StripeClass):
         # make the stripe pixels black
         self.arr[:,pix_start:pix_stop]=0
 
+        start_display_timestamp = time.time()
+
         if simple_panels is not None:
             # send to USB
             simple_panels.display_frame(self.arr)
@@ -263,10 +267,15 @@ class StripeClassWorker(StripeClass):
             sys.stdout.write('%d '%round(pix_center))
             sys.stdout.flush()
 
-        now = time.time()
+        stop_display_timestamp = time.time()
         # see ER_data_format.py
-        self.stimulus_timeseries_queue.put( (self.last_frame, self.trigger_timestamp, now,
-                                             self.stripe_pos_degrees, self.vel_dps) )
+        self.stimulus_timeseries_queue.put( (self.last_frame,
+                                             self.trigger_timestamp,
+                                             self.receive_timestamp,
+                                             start_display_timestamp,
+                                             stop_display_timestamp,
+                                             self.stripe_pos_degrees,
+                                             self.vel_dps) )
         ## if (self.stimulus_timeseries_queue.qsize()%100) == 0:
         ##     print 'self.stimulus_timeseries_queue.qsize()',self.stimulus_timeseries_queue.qsize()
 
