@@ -53,6 +53,7 @@
                 </object>
                 <object class="sizeritem">
                   <object class="wxPanel" name="PLUGIN_PANEL"/>
+                  <option>1</option>
                   <flag>wxEXPAND</flag>
                   <minsize>100,100</minsize>
                 </object>

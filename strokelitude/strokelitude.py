@@ -39,6 +39,7 @@ DataReadyEvent = wx.NewEventType()
 BGReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
+R2D = 180.0/np.pi
 
 class PluginHandlerThread( threading.Thread ):
     def __init__(self,plugin,quit_event):
@@ -490,7 +491,7 @@ class StrokelitudeClass(traits.HasTraits):
             colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
             img_plot = plot.img_plot("imagedata",colormap=colormap)[0]
 
-            plot.padding = 10
+            plot.padding = 30
             plot.bgcolor = "white"
 
             # Attach some tools to the plot
@@ -570,6 +571,7 @@ class StrokelitudeClass(traits.HasTraits):
             control = hastraits_proxy.edit_traits( parent=panel,
                                                    kind='subpanel',
                                                    ).control
+            #control.GetParent().SetMinSize(control.GetMinSize())
         else:
             control = wx.StaticText(panel,-1,'t=%s'%time.time())
         sizer.Add(control, 1, wx.EXPAND)
@@ -783,7 +785,7 @@ class StrokelitudeClass(traits.HasTraits):
                         if interp_idx != -1:
                             angle_radians = self.maskdata.index2angle(side,
                                                                       interp_idx)
-                            results.append( angle_radians )
+                            results.append( angle_radians*R2D ) # keep results in degrees
 
                             # draw lines
                             this_seg = self.maskdata.get_span_lineseg(side,angle_radians)
@@ -839,6 +841,7 @@ class StrokelitudeClass(traits.HasTraits):
             new_bg_image = self.new_bg_image
             self.new_bg_image = None
         self.bg_pd.set_data("imagedata", new_bg_image)
+        print 'should trigger redisplay of background image (but how?)'
 
     def OnDataReady(self, event):
         lrvals = None
