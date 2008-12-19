@@ -2,14 +2,6 @@ import multiprocessing
 import remote_traits
 import warnings
 
-if 1:
-    import Pyro
-
-    Pyro.config.PYRO_TRACELEVEL = 3
-    Pyro.config.PYRO_USER_TRACELEVEL = 3
-    Pyro.config.PYRO_DETAILED_TRACEBACK = 1
-    Pyro.config.PYRO_PRINT_REMOTE_TRACEBACK = 1
-
 def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,
              quit_event):
 
