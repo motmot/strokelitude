@@ -1,5 +1,5 @@
 /*
-	USBtoPanels Board: USB Host Source Code 
+	USBtoPanels Board: USB Host Source Code
 
     who when        what
     --- ----        ----
@@ -16,19 +16,19 @@ PanelArrayWrapper_t     PanelArray;
 FrameImageWrapper_t     FrameImage;
 
 int display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
-{    
+{
     /* Convert input image to size and shape necessary to display on panels */
     InputImage2FrameImage(data, stride0, shape0, shape1, offset0, offset1 );
-    
+
     /* Determine addresses and ImageMatrix starting indicies for each panel displaying FrameImage, store values in PanelArray */
     MapFrameImage2PanelArray();
-    
+
     /* Convert FrameImage data to panel message for each panel in PanelArray */
     ConvertFrameImage2PanelMessages();
-    
+
     /* Move PanelArray data into USBPacketArray to prepare for usb_bulk_write */
     PanelArray2USBPacketArray();
-    
+
     /* usb_bulk_write every usb packet in USBPacketArray */
     USBBulkWriteUSBPacketArray();
 }
@@ -83,7 +83,7 @@ static void MapFrameImage2PanelArray(void)
     paRowNum = FrameImage.RowNum/PANEL_PIXEL_NUM;
     paColNum = FrameImage.ColNum/PANEL_PIXEL_NUM;
     paColOffset = (FRAME_PANEL_COL_NUM - paColNum)/2;
-    
+
     for (paRowN=0; paRowN<paRowNum; paRowN++) {
         fiRowStart = paRowN*PANEL_PIXEL_NUM;
         for (paColN=0; paColN<paColNum; paColN++) {
@@ -102,14 +102,14 @@ static void ConvertFrameImage2PanelMessages(void)
     unsigned char panelN,pixelVal,piRowN,piColN,piRowOffset,piColOffset;
     unsigned char rowValArray[3],colValArray[3],rowValArrayComp[3];
     unsigned char GrayScaleFactor = 256/(0x01 << PANEL_GRAY_SCALE_BITS);
-    unsigned char panelProcessed,compressible; 
-    
+    unsigned char panelProcessed,compressible;
+
     for (panelN=0; panelN<PanelArray.PanelsInThisArray; panelN++) {
         piRowOffset = PanelArray.Panel[panelN].FrameImageIndex.Row;
         piColOffset = PanelArray.Panel[panelN].FrameImageIndex.Col;
 
         panelProcessed = 0;
-        /* Check to see if all the rows in the panel image are identical */ 
+        /* Check to see if all the rows in the panel image are identical */
         compressible = 1;
         piRowN = 0;
         while (compressible && (piRowN<PANEL_PIXEL_NUM)) {
@@ -151,7 +151,7 @@ static void ConvertFrameImage2PanelMessages(void)
             }
             panelProcessed = 1;
         }
-        
+
         /* If panel is incompressible, proceed to full message conversion */
         if (!panelProcessed) {
             for (piColN=0; piColN<PANEL_PIXEL_NUM; piColN++) {
@@ -205,9 +205,9 @@ static usb_dev_handle *OpenUSBDev(void)
     struct usb_bus *bus;
     struct usb_device *dev;
 
-    for(bus = usb_get_busses(); bus; bus = bus->next) 
+    for(bus = usb_get_busses(); bus; bus = bus->next)
     {
-        for(dev = bus->devices; dev; dev = dev->next) 
+        for(dev = bus->devices; dev; dev = dev->next)
         {
             if(dev->descriptor.idVendor == USB_DEV_VID
                 && dev->descriptor.idProduct == USB_DEV_PID)
@@ -247,7 +247,7 @@ static void USBBulkWriteUSBPacketArray(void)
         usb_close(dev);
         return;
     }
-    
+
     for (packetN = 0; packetN<USBPacketArray.PacketsInThisArray; packetN++) {
         outBufSize = USBPacketArray.Packet[packetN].BytesInPacketData;
         bytesWritten = usb_bulk_write(dev, USB_EP_OUT_NUM, USBPacketArray.Packet[packetN].Data, outBufSize, 5000);
