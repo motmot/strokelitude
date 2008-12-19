@@ -1,6 +1,7 @@
 from __future__ import division, with_statement
 
 import pkg_resources
+import data_format # strokelitude
 
 import motmot.utils.config
 
@@ -13,6 +14,8 @@ import cairo
 import scipy.sparse
 import Queue
 import os, warnings, pickle
+
+import tables # pytables
 
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
@@ -40,26 +43,6 @@ BGReadyEvent = wx.NewEventType()
 
 D2R = np.pi/180.0
 R2D = 180.0/np.pi
-
-class PluginHandlerThread( threading.Thread ):
-    def __init__(self,plugin,quit_event):
-        self._plugin = plugin
-        self._quit_event = quit_event
-        threading.Thread.__init__(self)
-
-    def run(self):
-        last_run = 0.0
-        dt = 1.0 / 100.0 # 100 Hz
-
-        while not self._quit_event.isSet():
-            now = time.time()
-            next = last_run + dt
-            sleep_dur = next-now
-            if sleep_dur > 0.0:
-                time.sleep(sleep_dur)
-            last_run = time.time()
-
-            self._plugin.do_work()
 
 def load_plugins():
     # modified from motmot.fview.plugin_manager
@@ -345,6 +328,10 @@ def resample_sparse( orig, orig_h, orig_w, offset, new_h, new_w ):
     result = scipy.sparse.csc_matrix(new_dense)
     return result
 
+StrokelitudeDataDescription = data_format.StrokelitudeDataDescription
+StrokelitudeDataCol_dtype = tables.Description(
+    StrokelitudeDataDescription().columns)._v_nestedDescr
+
 class StrokelitudeClass(traits.HasTraits):
     """plugin for fview.
 
@@ -358,6 +345,8 @@ class StrokelitudeClass(traits.HasTraits):
     analyze_nth_frame = traits.Int(5)
     threshold_fraction = traits.Float(0.5)
     light_on_dark = traits.Bool(True)
+    save_to_disk = traits.Bool(False)
+    streaming_filename = traits.File
 
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
@@ -370,6 +359,10 @@ class StrokelitudeClass(traits.HasTraits):
                                     ),
                                Item(name='light_on_dark',
                                     ),
+                               Item(name='save_to_disk',
+                                    ),
+                               Item(name='streaming_filename',
+                                    style='readonly'),
                                ))
 
     def _mask_dirty_changed(self):
@@ -384,11 +377,46 @@ class StrokelitudeClass(traits.HasTraits):
             self.enabled_box.Enable(True)
             self.recompute_mask_button.Enable(False)
 
+    def _save_to_disk_changed(self):
+        if self.save_to_disk:
+            self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
+            self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
+            self.stream_table   = self.streaming_file.createTable(
+                self.streaming_file.root,'stroke_data', StrokelitudeDataDescription,
+                "wingstroke data",expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
+
+            self.stream_plugin_tables = {}
+            self.plugin_table_dtypes = {}
+            for name, description in self.current_plugin_descr_dict.iteritems():
+                self.stream_plugin_tables[name] = self.streaming_file.createTable(
+                    self.streaming_file.root, name, description,
+                    name,expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
+                self.plugin_table_dtypes[name] = tables.Description(
+                    description().columns)._v_nestedDescr
+
+            print 'saving to disk...'
+        else:
+            print 'closing file', repr(self.streaming_filename)
+            # flush queue
+            self.save_data_queue = Queue.Queue()
+
+            self.stream_table   = None
+            self.stream_plugin_tables = None
+            self.plugin_table_dtypes = None
+            self.streaming_file.close()
+            self.streaming_file = None
+            self.streaming_filename = ''
+
     def __init__(self,wx_parent,*args,**kwargs):
         super(StrokelitudeClass,self).__init__(*args,**kwargs)
         self.wx_parent = wx_parent
         self.timestamp_modeler = None
         self.drawsegs_cache = None
+        self.streaming_file = None
+        self.stream_table   = None
+        self.stream_plugin_tables = None
+        self.plugin_table_dtypes = None
+        self.current_plugin_descr_dict = {}
 
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
@@ -408,6 +436,8 @@ class StrokelitudeClass(traits.HasTraits):
         if not loaded_maskdata:
             self.maskdata = MaskData()
         self.maskdata.on_trait_change( self.on_mask_change )
+        self.save_data_queue = Queue.Queue()
+
         self.vals_queue = Queue.Queue()
         self.bg_queue = Queue.Queue()
         self.new_bg_image_lock = threading.Lock()
@@ -428,11 +458,12 @@ class StrokelitudeClass(traits.HasTraits):
             if len(plugin_names):
                 choice.SetSelection(0)
             wx.EVT_CHOICE(choice, choice.GetId(), self.OnChoosePlugin)
+            time.sleep(0.2) # give a bit of time for Pyro server to start...
             self.OnChoosePlugin(None)
 
-            if len(self.plugins)>1:
-                warnings.warn('currently only support for max 1 plugin')
-                del self.plugins[1:]
+            ## if len(self.plugins)>1:
+            ##     warnings.warn('currently only support for max 1 plugin')
+            ##     del self.plugins[1:]
 
             self.quit_plugin_event = threading.Event()
 
@@ -542,7 +573,51 @@ class StrokelitudeClass(traits.HasTraits):
         self.frame.Connect( -1, -1, BGReadyEvent, self.OnNewBGReady )
         self.mask_dirty = True
 
+        ID_Timer = wx.NewId()
+        self.timer = wx.Timer(self.frame, ID_Timer)
+        wx.EVT_TIMER(self.frame, ID_Timer, self.OnTimer)
+        self.timer.Start(2000)
+
+    def OnTimer(self,event):
+        self.service_save_data()
+
+    def service_save_data(self):
+        # pump the queue
+        list_of_rows_of_data = []
+        try:
+            while 1:
+                list_of_rows_of_data.append( self.save_data_queue.get_nowait() )
+        except Queue.Empty:
+            pass
+
+        if self.stream_table is not None and len(list_of_rows_of_data):
+            # it's much faster to convert to numpy first:
+            recarray = np.rec.array(list_of_rows_of_data,
+                                    dtype=StrokelitudeDataCol_dtype)
+            self.stream_table.append( recarray )
+            self.stream_table.flush()
+
+        # plugin data...
+        for name,queue in self.current_plugin_save_queues.iteritems():
+
+            list_of_rows_of_data = []
+            try:
+                while 1:
+                    list_of_rows_of_data.append( queue.get_nowait() )
+            except Queue.Empty:
+                pass
+
+            if self.stream_plugin_tables is not None and len(list_of_rows_of_data):
+                recarray = np.rec.array(list_of_rows_of_data,
+                                        dtype=self.plugin_table_dtypes[name])
+                table = self.stream_plugin_tables[name]
+                table.append(recarray)
+                table.flush()
+
     def OnChoosePlugin(self,event):
+        if self.save_to_disk:
+            raise RuntimeError('cannot choose plugin while saving to disk')
+
         choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
         name = choice.GetStringSelection()
         if name == '':
@@ -562,7 +637,8 @@ class StrokelitudeClass(traits.HasTraits):
         # startup new plugin
 
         plugin = self.name2plugin[name]
-        hastraits_proxy, self.current_plugin_queue = plugin.startup()
+        (hastraits_proxy, self.current_plugin_queue, self.current_plugin_save_queues,
+         self.current_plugin_descr_dict) = plugin.startup()
 
         # add to display
 
@@ -792,16 +868,20 @@ class StrokelitudeClass(traits.HasTraits):
                             draw_linesegs.extend(this_seg)
                             self.drawsegs_cache.extend( this_seg )
                         else:
-                            results.append( None )
+                            results.append( np.nan )
 
+                    left_angle_degrees, right_angle_degrees = results
+                    processing_timestamp = time.time()
                     if trigger_timestamp is not None:
-                        now = time.time()
-                        self.latency_msec = (now-trigger_timestamp)*1000.0
+                        self.latency_msec = (processing_timestamp-trigger_timestamp)*1000.0
 
                     if self.current_plugin_queue is not None:
                         self.current_plugin_queue.put(
-                            (cam_id,timestamp,framenumber,results,
+                            (framenumber,left_angle_degrees, right_angle_degrees,
                             trigger_timestamp) )
+                    self.save_data_queue.put(
+                        (framenumber,trigger_timestamp,processing_timestamp,
+                        left_angle_degrees, right_angle_degrees))
 
                     ## for queue in self.plugin_data_queues:
                     ##     queue.put( (cam_id,timestamp,framenumber,results) )

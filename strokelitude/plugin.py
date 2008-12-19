@@ -2,16 +2,16 @@ import multiprocessing
 import remote_traits
 import warnings
 
-def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,
+def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,save_data_queues,
              quit_event):
 
     # the mainloop for plugins
-    print 'process %r is starting'%multiprocessing.current_process()
+    #print 'process %r is starting'%multiprocessing.current_process()
     instance_proxy = klass_proxy()
     server = remote_traits.ServerObj(hostname,port)
     server.serve_name(obj_name,instance_proxy)
 
-    instance_worker = klass_worker()
+    instance_worker = klass_worker(**save_data_queues)
 
     instance_worker.set_incoming_queue(data_queue)
 
@@ -34,7 +34,7 @@ def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,
     while not quit_event.is_set(): # run forever
         server.handleRequests(timeout=dt) # handle network events
         instance_worker.do_work()
-    print 'process %r is shutting down'%multiprocessing.current_process()
+    #print 'process %r is shutting down'%multiprocessing.current_process()
 
 class PluginBase(object):
     """abstract base class to create plugins for strokelitude GUI"""
@@ -59,6 +59,14 @@ class PluginBase(object):
 
     def startup(self):
         klass_proxy,klass_worker = self.get_hastraits_class()
+        if hasattr(self,'get_worker_table_descriptions'):
+            descr_dict = self.get_worker_table_descriptions()
+        else:
+            descr_dict = {}
+
+        save_data_queues = {}
+        for name,description in descr_dict.iteritems():
+            save_data_queues[name] = multiprocessing.Queue()
 
         do_hostname = 'localhost'
         do_port = 8112
@@ -73,7 +81,7 @@ class PluginBase(object):
         self.child = multiprocessing.Process( target=mainloop,
                                               args=(klass_proxy,klass_worker,
                                                     do_hostname,do_port,
-                                                    oname,data_queue,
+                                                    oname,data_queue,save_data_queues,
                                                     self.quit_event))
         self.child.start() # fork subprocess
 
@@ -84,4 +92,4 @@ class PluginBase(object):
                                                                    do_port,
                                                                    oname)
 
-        return hastraits_proxy, data_queue
+        return hastraits_proxy, data_queue, save_data_queues, descr_dict
