@@ -13,9 +13,114 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
 
 import remote_traits
 import strokelitude.plugin
+import multiprocessing
+import multiprocessing.queues
 
 R2D = 180.0/np.pi
 D2R = np.pi/180.0
+
+class StateMachine:
+
+    def __init__(self, to_state_machine, from_state_machine):
+        self.to_state_machine = to_state_machine
+        self.from_state_machine = from_state_machine
+
+        self.gain = -900.0
+        self.offset = 0.0
+
+        self.stripe_pos_degrees = 0.0
+        self.last_time = time.time()
+
+        self.current_state = 'offline'
+        self.current_state_finished_time = None
+
+    def tick(self,delta_degrees):
+        # update stripe position...
+        try:
+            incoming_message = self.to_state_machine.get_nowait()
+        except multiprocessing.queues.Empty:
+            pass
+        else:
+            print 'got message',incoming_message
+            if incoming_message.startswith('CL '):
+                parts = incoming_message.split()
+                tmp, gain, offset, duration_sec = parts
+                gain, offset, duration_sec = map(float,(gain,offset,duration_sec))
+                self.current_state = incoming_message
+                self.gain = gain
+                self.offset = offset
+                now = time.time()
+                self.current_state_finished_time = now+duration_sec
+                print 'switching to closed loop'
+            elif incoming_message.startswith('OLs '):
+                parts = incoming_message.split()
+                tmp, start_pos_deg, stop_pos_deg, velocity_dps = parts
+                start_pos_deg, stop_pos_deg, velocity_dps = map(float,
+                                                                (start_pos_deg,
+                                                                 stop_pos_deg,
+                                                                 velocity_dps))
+                self.current_state = incoming_message
+                total_deg = stop_pos_deg-start_pos_deg
+                duration_sec = total_deg/velocity_dps
+                if duration_sec < 0:
+                    raise ValueError('impossible combination')
+                self.gain = 0
+                self.offset = velocity_dps
+                self.stripe_pos_degrees = start_pos_deg
+                now = time.time()
+                self.current_state_finished_time = now+duration_sec
+                print 'switching to open loop sweep'
+            else:
+                raise ValueError('Unknown message: %s'%incoming_message)
+
+        if self.current_state != 'offline':
+            now = time.time()
+            if now >= self.current_state_finished_time:
+                print 'switching to offline because current state ended'
+                outgoing_message = 'done '+self.current_state
+                self.from_state_machine.put(outgoing_message)
+                self.current_state = 'offline'
+
+        # update self.vel every frame so that changes in gain and offset noticed
+        vel = delta_degrees*self.gain + self.offset
+
+        # Compute stripe position.
+        now = time.time()
+        dt = now-self.last_time
+        self.last_time = now
+
+        self.stripe_pos_degrees += vel*dt
+        return self.stripe_pos_degrees
+
+class StripeControlRemoteProcess():
+    def __init__(self,to_state_machine,from_state_machine):
+        self.to_state_machine = to_state_machine
+        self.from_state_machine = from_state_machine
+    def closed_loop( self, gain=-900.0, offset=0.0, duration_sec=30 ):
+        to_msg = 'CL %s %s %s'%(repr(gain),repr(offset),repr(duration_sec))
+        self._send(to_msg)
+    def _send(self,to_msg):
+        print 'sending message to state machine',to_msg
+        self.to_state_machine.put(to_msg)
+        expected_from_msg = 'done '+to_msg
+        print 'awaiting message from state machine'
+        from_msg = self.from_state_machine.get()
+        if from_msg != expected_from_msg:
+            print 'from_msg',repr(from_msg)
+            print 'expected_from_msg', repr(expected_from_msg)
+            raise RuntimeError('did not get expected message')
+    def open_loop_sweep( self,
+                         start_pos_deg = 180,
+                         stop_pos_deg = -180,
+                         velocity_dps = 100 ):
+        to_msg = 'OLs %s %s %s'%(repr(start_pos_deg),repr(stop_pos_deg),repr(velocity_dps))
+        self._send(to_msg)
+
+def stripe_control_runner(experiment_file, to_state_machine, from_state_machine):
+    # this runs in a separate process
+    print 'running experiment',experiment_file
+    stripe_control = StripeControlRemoteProcess(to_state_machine,from_state_machine)
+    execfile(experiment_file)
 
 class StripePluginInfo(strokelitude.plugin.PluginBase):
     def get_name(self):
@@ -24,17 +129,17 @@ class StripePluginInfo(strokelitude.plugin.PluginBase):
         return StripeClass, StripeClassWorker
 
 class StripeClass(remote_traits.MaybeRemoteHasTraits):
-    gain = traits.Float(-1.0)
-    offset = traits.Float(0.0)
+    ## gain = traits.Float(-900.0)
+    ## offset = traits.Float(0.0)
     experiment_file = traits.File()
     start_experiment = traits.Button(label='start experiment')
-    stop_experiment = traits.Button(label='stop experiment')
+    ## stop_experiment = traits.Button(label='stop experiment')
 
-    traits_view = View( Group( ( Item(name='gain',label='gain [ (deg/sec) / deg ]'),
-                                 Item(name='offset',label='offset [ deg/sec ]'),
+    traits_view = View( Group( (#Item(name='gain',label='gain [ (deg/sec) / deg ]'),
+                                #Item(name='offset',label='offset [ deg/sec ]'),
 
                                  Item(name='start_experiment',show_label=False),
-                                 Item(name='stop_experiment',show_label=False),
+                                 ## Item(name='stop_experiment',show_label=False),
                                  Item(name='experiment_file'),
                                  )),
                         )
@@ -45,20 +150,37 @@ class StripeClassWorker(StripeClass):
         self.panel_width=11
         self.compute_width=12
         self.stripe_pos_degrees = 0.0
-        self.last_time = time.time()
-        self.gain = -1.0 # in (degrees per second) / degrees
-        self.offset = 0.0 # in degrees per second
         self.arr = np.zeros( (self.panel_height*8, self.panel_width*8),
                               dtype=np.uint8)
         self.vel = 0.0
         self.last_diff_degrees = 0.0
         self.incoming_data_queue = Queue.Queue()
 
+        self.to_state_machine = multiprocessing.Queue()
+        self.from_state_machine = multiprocessing.Queue()
+        self.state_machine = StateMachine(#self,
+                                          self.to_state_machine,
+                                          self.from_state_machine)
+
     def _start_experiment_fired(self):
         if not self.experiment_file:
             raise ValueError('no experiment file specified')
-        locals = {'stripe_control':self.stripe_control_instance}
-        execfile(self.experiment_file,locals)
+
+        ## if not self.is_offline:
+        ##     raise RuntimeError('already running experiment!')
+
+        self.sci = multiprocessing.Process(target=stripe_control_runner,
+                                           args=(self.experiment_file,
+                                                 self.to_state_machine,
+                                                 self.from_state_machine))
+
+        # notify GUI that we are running experiment...
+        ## self.is_offline = False
+        self.sci.daemon = True # don't keep parent open
+        self.sci.start()
+
+    def _stop_experiment_fired(self):
+        self.to_state_machine.put('abort')
 
     def set_incoming_queue(self,data_queue):
         self.incoming_data_queue = data_queue
@@ -83,15 +205,7 @@ class StripeClassWorker(StripeClass):
                 diff_degrees = left_angle_degrees + right_angle_degrees # (opposite signs already from angle measurement)
                 self.last_diff_degrees = diff_degrees
 
-        # update self.vel every frame so that changes in gain and offset noticed
-        self.vel = self.last_diff_degrees*self.gain + self.offset
-
-        # Compute stripe position.
-        now = time.time()
-        dt = now-self.last_time
-        self.last_time = now
-
-        self.stripe_pos_degrees += self.vel*dt
+        self.stripe_pos_degrees = self.state_machine.tick(self.last_diff_degrees)
 
         # Draw stripe
         self.draw_stripe()
@@ -100,7 +214,7 @@ class StripeClassWorker(StripeClass):
         self.arr.fill( 255 ) # turn all pixels white
 
         # compute columns of stripe
-        self.stripe_pos_radians = (self.stripe_pos_degrees*D2R) % (2*np.pi)
+        self.stripe_pos_radians = ((180-self.stripe_pos_degrees)*D2R) % (2*np.pi)
         pix_center = self.stripe_pos_radians/(2*np.pi)*(self.compute_width*8)
         pix_width = 4
         pix_start = int(pix_center-pix_width/2.0)
