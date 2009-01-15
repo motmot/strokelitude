@@ -132,12 +132,11 @@ class MaskData(traits.HasTraits):
     _beta_changed = _alpha_beta_nbins_changed
     _nbins_changed = _alpha_beta_nbins_changed
 
-    ## def __init__(self):
-    ##     print 'XXX naughty to initialize traits function!'
-    ##     self._wingsplit_changed()
-    ##     self._gamma_changed()
-    ##     self._xy_changed()
-    ##     self._alpha_beta_nbins_changed()
+    def __init__(self,*args,**kwargs):
+        super(MaskData,self).__init__(*args,**kwargs)
+        self._gamma_changed()
+        self._xy_changed()
+        self._alpha_beta_nbins_changed()
 
     traits_view = View( Group( ( Item('x',
                                       style='custom',
@@ -447,6 +446,7 @@ class StrokelitudeClass(traits.HasTraits):
         self.recomputing_lock = threading.Lock()
         self.current_plugin_name = None # nothing loaded
         self.current_plugin_queue = None
+        self.current_plugin_save_queues = {} # replaced later
 
         if 1:
             # load plugins
