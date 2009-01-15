@@ -132,11 +132,12 @@ class MaskData(traits.HasTraits):
     _beta_changed = _alpha_beta_nbins_changed
     _nbins_changed = _alpha_beta_nbins_changed
 
-    def __init__(self):
-        self._wingsplit_changed()
-        self._gamma_changed()
-        self._xy_changed()
-        self._alpha_beta_nbins_changed()
+    ## def __init__(self):
+    ##     print 'XXX naughty to initialize traits function!'
+    ##     self._wingsplit_changed()
+    ##     self._gamma_changed()
+    ##     self._xy_changed()
+    ##     self._alpha_beta_nbins_changed()
 
     traits_view = View( Group( ( Item('x',
                                       style='custom',
