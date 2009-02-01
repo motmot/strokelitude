@@ -4,6 +4,7 @@ import pkg_resources
 import data_format # strokelitude
 
 import motmot.utils.config
+import motmot.FastImage.FastImage as FastImage
 
 import wx
 import wx.xrc as xrc
@@ -11,7 +12,6 @@ import warnings, time, threading
 
 import numpy as np
 import cairo
-import scipy.sparse
 import Queue
 import os, warnings, pickle
 
@@ -71,6 +71,10 @@ def load_plugins():
     # make instances of plugins
     plugins = [PluginClass() for PluginClass in PluginClasses]
     return plugins
+
+class BufferAllocator:
+    def __call__(self, w, h):
+        return FastImage.FastImage8u(FastImage.Size(w,h))
 
 class MaskData(traits.HasTraits):
     # lengths, in pixels
@@ -265,7 +269,7 @@ class MaskData(traits.HasTraits):
         linesegs.append( verts.T.ravel() )
         return linesegs
 
-def quad2imvec(quad,width,height,debug_count=0):
+def quad2fastimage_offset(quad,width,height,debug_count=0):
     """convert a quad to an image vector"""
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
                                  width, height)
@@ -278,10 +282,18 @@ def quad2imvec(quad,width,height,debug_count=0):
     x0=quad[0]
     y0=quad[1]
     ctx.move_to(x0,y0)
+    xmin = int(np.floor(x0))
+    xmax = int(np.ceil(x0+1))
+    ymin = int(np.floor(y0))
+    ymax = int(np.ceil(y0+1))
 
     for (x,y) in zip(quad[2::2],
                      quad[3::2]):
         ctx.line_to(x,y)
+        xmin = min(int(np.floor(x)),xmin)
+        xmax = max(int(np.ceil(x+1)),xmax)
+        ymin = min(int(np.floor(y)),ymin)
+        ymax = max(int(np.ceil(y+1)),ymax)
     ctx.close_path()
     ctx.set_source_rgb(1,1,1)
     ctx.fill()
@@ -301,31 +313,19 @@ def quad2imvec(quad,width,height,debug_count=0):
         im = scipy.misc.pilutil.toimage(arr)
         im.save(fname)
     arr = arr[:,:,0] # only red channel
-    arr = arr.astype(np.float64)
-    arr = arr/255.0 # max value should be 1.0
-    imvec = arr.ravel()
-    return imvec
 
-def resample_sparse( orig, orig_h, orig_w, offset, new_h, new_w ):
-    print 'resampling'
-    orig_dense = orig.todense()
-    print 'type(orig_dense)',type(orig_dense)
-    orig_dense = np.asarray(orig_dense) # convert to np.array (from matrix)
-    print 'type(orig_dense)',type(orig_dense)
-    print 'orig_dense.shape',orig_dense.shape
+    # Now, crop to only region of interest
+    roi = arr[ymin:ymax,xmin:xmax]
+    fi_roi = FastImage.asfastimage(roi)
+    offset = xmin,ymin
+    return fi_roi, xmin, ymin
 
-    new_dense = []
-    xoff,yoff = offset
-    for orig_row in orig_dense:
-        orig_mat = np.reshape( orig_row, (orig_h,orig_w) )
-        print 'orig_mat.shape',orig_mat.shape
-        resampled_mat = orig_mat[ yoff:(yoff+new_h), xoff:(xoff+new_w) ]
-        print 'resampled_mat.shape',resampled_mat.shape
-        imvec = resampled_mat.ravel()
-        print 'imvec.shape',imvec.shape
-        new_dense.append( imvec )
-    new_dense = np.array(new_dense)
-    result = scipy.sparse.csc_matrix(new_dense)
+def compute_sparse_mult(list_of_fi_offsets, fi_im):
+    result = []
+    for imA,left,bottom in list_of_fi_offsets:
+        imB = fi_im.roi( left, bottom, imA.size )
+        result.append( imA.dot(imB, imA.size) )
+    result = np.array(result)
     return result
 
 StrokelitudeDataDescription = data_format.StrokelitudeDataDescription
@@ -661,34 +661,27 @@ class StrokelitudeClass(traits.HasTraits):
             left_quads = self.maskdata.get_quads('left')
             right_quads = self.maskdata.get_quads('right')
 
-            left_mat = []
+            self.left_mat = []
             for quad in left_quads:
-                imvec = quad2imvec(quad,
-                                   self.width,self.height,
-                                   debug_count=count)
-                left_mat.append( imvec )
+                fi_roi, left, bottom = quad2fastimage_offset(
+                    quad,
+                    self.width,self.height,
+                    debug_count=count)
+                self.left_mat.append( (fi_roi, left, bottom) )
                 count+=1
 
-            left_mat = np.array(left_mat)
-            self.left_mat_sparse = scipy.sparse.csc_matrix(left_mat)
-
-            right_mat = []
+            self.right_mat = []
             for quad in right_quads:
-                imvec = quad2imvec(quad,
-                                   self.width,self.height,
-                                   debug_count=count)
-                right_mat.append( imvec )
+                fi_roi, left, bottom = quad2fastimage_offset(
+                    quad,
+                    self.width,self.height,
+                    debug_count=count)
+                self.right_mat.append( (fi_roi, left, bottom) )
                 count+=1
 
-            right_mat = np.array(right_mat)
-            self.right_mat_sparse = scipy.sparse.csc_matrix(right_mat)
-
-            self._sparse_roi_cache = None # clear cache
-            self._recomputed_timestamp = time.time() # use as a hash value
-
-            bg_image_flat = self.bg_image.ravel()
-            self.bg_left_vec = self.left_mat_sparse  * bg_image_flat
-            self.bg_right_vec = self.right_mat_sparse  * bg_image_flat
+            bg = FastImage.asfastimage(self.bg_image)
+            self.bg_left_vec = compute_sparse_mult(self.left_mat,bg)
+            self.bg_right_vec= compute_sparse_mult(self.right_mat,bg)
 
             self.mask_dirty=False
 
@@ -698,6 +691,9 @@ class StrokelitudeClass(traits.HasTraits):
     def get_frame(self):
         """return wxPython frame widget"""
         return self.frame
+
+    def get_buffer_allocator(self,cam_id):
+        return BufferAllocator()
 
     def get_plugin_name(self):
         return 'Stroke Amplitude'
@@ -769,54 +765,18 @@ class StrokelitudeClass(traits.HasTraits):
 
                     h,w = this_image.shape
                     if not (self.width==w and self.height==h):
-                        warnings.warn('no ROI support for calculating stroke '
-                                      'amplitude')
-
-                        tmp = self._sparse_roi_cache
-
-                        cache_ok = False
-                        if tmp is not None:
-                            (old_timestamp, old_offset, old_wh, left, right) = tmp
-                            if (old_timestamp == self._recomputed_timestamp and
-                                old_offset == buf_offset and
-                                old_wh == (w,h) ):
-
-                                left_mat_sparse = left
-                                right_mat_sparse = right
-                                cache_ok = True
-                        if not cache_ok:
-                            left_mat_sparse = resample_sparse(
-                                self.left_mat_sparse,
-                                self.height,
-                                self.width,
-                                buf_offset,
-                                h,w )
-                            right_mat_sparse = resample_sparse(
-                                self.right_mat_sparse,
-                                self.height,
-                                self.width,
-                                buf_offset,
-                                h,w )
-                            self._sparse_roi_cache = ( self._recomputed_timestamp,
-                                                       buf_offset,
-                                                       (w,h),
-                                                       left_mat_sparse,
-                                                       right_mat_sparse )
-
-                        raise NotImplementedError('need to support background '
-                                                  'images for ROI')
+                        raise NotImplementedError('need to support ROI')
 
                     else:
-                        left_mat_sparse = self.left_mat_sparse
-                        right_mat_sparse = self.right_mat_sparse
+                        left_mat = self.left_mat
+                        right_mat = self.right_mat
 
                         bg_left_vec = self.bg_left_vec
                         bg_right_vec = self.bg_right_vec
 
-                    this_image_flat = this_image.ravel()
-
-                    left_vals  = left_mat_sparse  * this_image_flat
-                    right_vals = right_mat_sparse * this_image_flat
+                    this_image_fi = FastImage.asfastimage(this_image)
+                    left_vals  = compute_sparse_mult(left_mat,this_image_fi)
+                    right_vals = compute_sparse_mult(right_mat,this_image_fi)
 
                     left_vals = left_vals - bg_left_vec
                     right_vals = right_vals - bg_right_vec
