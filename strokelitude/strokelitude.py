@@ -980,6 +980,14 @@ class StrokelitudeClass(traits.HasTraits):
         ## self.bg_image = np.zeros( (max_height, max_width),
         ##                           dtype=np.uint8)
 
+    def offline_startup_func(self,arg):
+        """gets called by fview_replay_fmf"""
+
+        # automatically recompute mask and enable processing in offline mode
+        self.recompute_mask(None)
+        assert self.mask_dirty==False
+        self.enabled_box.SetValue(True)
+
 if __name__=='__main__':
 
     data = MaskData()
