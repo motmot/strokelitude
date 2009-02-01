@@ -103,7 +103,12 @@ class StripeClassWorker(StripeClass):
 
         if simple_panels is not None:
             # send to USB
-            simple_panels.display_frame(self.arr)
+            try:
+                simple_panels.display_frame(self.arr)
+            except:
+                sys.stderr.write(
+                    'ERROR displaying frame. (Hint: try DISABLE_PANELS=1)\n')
+                raise
         else:
             sys.stdout.write('%d '%round(pix_center))
             sys.stdout.flush()
