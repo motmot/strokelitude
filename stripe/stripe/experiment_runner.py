@@ -56,7 +56,8 @@ class StateMachine(traits.HasTraits):
             if incoming_message.startswith('CL '):
                 parts = incoming_message.split()
                 tmp, gain, offset, duration_sec = parts
-                gain, offset, duration_sec = map(float,(gain,offset,duration_sec))
+                gain, offset, duration_sec = map(float,
+                                                 (gain,offset,duration_sec))
                 self.current_state = incoming_message
                 self.gain = gain
                 self.offset = offset
@@ -124,13 +125,18 @@ class StripeControlRemoteProcess():
                          start_pos_deg = 180,
                          stop_pos_deg = -180,
                          velocity_dps = 100 ):
-        to_msg = 'OLs %s %s %s'%(repr(start_pos_deg),repr(stop_pos_deg),repr(velocity_dps))
+        to_msg = 'OLs %s %s %s'%(repr(start_pos_deg),
+                                 repr(stop_pos_deg),
+                                 repr(velocity_dps))
         self._send(to_msg)
 
-def stripe_control_runner(experiment_file, to_state_machine, from_state_machine):
+def stripe_control_runner(experiment_file,
+                          to_state_machine,
+                          from_state_machine):
     # this runs in a separate process
     print 'running experiment',experiment_file
-    stripe_control = StripeControlRemoteProcess(to_state_machine,from_state_machine)
+    stripe_control = StripeControlRemoteProcess(
+        to_state_machine,from_state_machine)
     execfile(experiment_file)
 
 class StripePluginInfo(strokelitude.plugin.PluginBase):
@@ -140,8 +146,9 @@ class StripePluginInfo(strokelitude.plugin.PluginBase):
     def get_hastraits_class(self):
         return StripeClass, StripeClassWorker
     def get_worker_table_descriptions(self):
-        return {'stimulus_state_queue':ER_data_format.StateDescription,
-                'stimulus_timeseries_queue':ER_data_format.TimeseriesDescription}
+        return {
+            'stimulus_state_queue':ER_data_format.StateDescription,
+            'stimulus_timeseries_queue':ER_data_format.TimeseriesDescription}
 
 class StripeClass(remote_traits.MaybeRemoteHasTraits):
     ## gain = traits.Float(-900.0)
@@ -150,13 +157,10 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
     start_experiment = traits.Button(label='start experiment')
     ## stop_experiment = traits.Button(label='stop experiment')
 
-    traits_view = View( Group( (#Item(name='gain',label='gain [ (deg/sec) / deg ]'),
-                                #Item(name='offset',label='offset [ deg/sec ]'),
-
-                                 Item(name='start_experiment',show_label=False),
-                                 ## Item(name='stop_experiment',show_label=False),
-                                 Item(name='experiment_file'),
-                                 )),
+    traits_view = View( Group( (
+        Item(name='start_experiment',show_label=False),
+        Item(name='experiment_file'),
+        )),
                         )
 
 class StripeClassWorker(StripeClass):
@@ -182,10 +186,11 @@ class StripeClassWorker(StripeClass):
         self.from_state_machine = multiprocessing.Queue()
         self.stimulus_state_queue = stimulus_state_queue
         self.stimulus_timeseries_queue = stimulus_timeseries_queue
-        self.state_machine = StateMachine(self.to_state_machine,
-                                          self.from_state_machine,
-                                          stimulus_state_queue=self.stimulus_state_queue,
-                                          stimulus_timeseries_queue=self.stimulus_timeseries_queue)
+        self.state_machine = StateMachine(
+            self.to_state_machine,
+            self.from_state_machine,
+            stimulus_state_queue=self.stimulus_state_queue,
+            stimulus_timeseries_queue=self.stimulus_timeseries_queue)
 
     def _start_experiment_fired(self):
         if not self.experiment_file:
@@ -229,11 +234,14 @@ class StripeClassWorker(StripeClass):
             self.last_frame = framenumber
             self.trigger_timestamp = trigger_timestamp
             self.receive_timestamp = time.time()
-            if not (np.isnan(left_angle_degrees) or np.isnan(right_angle_degrees)):
-                diff_degrees = left_angle_degrees + right_angle_degrees # (opposite signs already from angle measurement)
+            if not (np.isnan(left_angle_degrees) or
+                    np.isnan(right_angle_degrees)):
+                # (opposite signs already from angle measurement)
+                diff_degrees = left_angle_degrees + right_angle_degrees
                 self.last_diff_degrees = diff_degrees
 
-        self.stripe_pos_degrees, self.vel_dps = self.state_machine.tick(self.last_diff_degrees)
+        self.stripe_pos_degrees, self.vel_dps = \
+                                 self.state_machine.tick(self.last_diff_degrees)
 
         # Draw stripe
         self.draw_stripe()
@@ -242,7 +250,8 @@ class StripeClassWorker(StripeClass):
         self.arr.fill( 255 ) # turn all pixels white
 
         # compute columns of stripe
-        self.stripe_pos_radians = ((180-self.stripe_pos_degrees)*D2R) % (2*np.pi)
+        self.stripe_pos_radians = \
+                                ((180-self.stripe_pos_degrees)*D2R) % (2*np.pi)
         pix_center = self.stripe_pos_radians/(2*np.pi)*(self.compute_width*8)
         pix_width = 4
         pix_start = int(pix_center-pix_width/2.0)
@@ -277,8 +286,6 @@ class StripeClassWorker(StripeClass):
                                              stop_display_timestamp,
                                              self.stripe_pos_degrees,
                                              self.vel_dps) )
-        ## if (self.stimulus_timeseries_queue.qsize()%100) == 0:
-        ##     print 'self.stimulus_timeseries_queue.qsize()',self.stimulus_timeseries_queue.qsize()
 
 def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
     s = StripeClassWorker()
