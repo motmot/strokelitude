@@ -638,7 +638,8 @@ class StrokelitudeClass(traits.HasTraits):
         # startup new plugin
 
         plugin = self.name2plugin[name]
-        (hastraits_proxy, self.current_plugin_queue, self.current_plugin_save_queues,
+        (hastraits_proxy, self.current_plugin_queue,
+         self.current_plugin_save_queues,
          self.current_plugin_descr_dict) = plugin.startup()
 
         # add to display
