@@ -109,9 +109,6 @@ class StripeClassWorker(StripeClass):
                 sys.stderr.write(
                     'ERROR displaying frame. (Hint: try DISABLE_PANELS=1)\n')
                 raise
-        else:
-            sys.stdout.write('%d '%round(pix_center))
-            sys.stdout.flush()
 
 def rotate_stripe(revs=2,seconds_per_rev=2,fps=50):
     s = StripeClassWorker()
