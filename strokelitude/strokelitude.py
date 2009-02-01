@@ -973,6 +973,9 @@ class StrokelitudeClass(traits.HasTraits):
         self.maskdata.maxx = self.width
         self.maskdata.maxy = self.height
 
+        with self.recomputing_lock:
+            self.bg_image = np.zeros( (self.height,self.width), dtype=np.uint8 )
+
         self.OnClearBg(None)
         ## self.bg_image = np.zeros( (max_height, max_width),
         ##                           dtype=np.uint8)
