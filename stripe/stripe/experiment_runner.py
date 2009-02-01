@@ -134,6 +134,7 @@ def stripe_control_runner(experiment_file, to_state_machine, from_state_machine)
     execfile(experiment_file)
 
 class StripePluginInfo(strokelitude.plugin.PluginBase):
+    """called by strokelitude.plugin"""
     def get_name(self):
         return 'Stripe Experiment Runner'
     def get_hastraits_class(self):
