@@ -342,7 +342,6 @@ class StrokelitudeClass(traits.HasTraits):
     maskdata = traits.Instance(MaskData)
 
     latency_msec = traits.Float()
-    analyze_nth_frame = traits.Int(5)
     threshold_fraction = traits.Float(0.5)
     light_on_dark = traits.Bool(True)
     save_to_disk = traits.Bool(False)
@@ -351,9 +350,6 @@ class StrokelitudeClass(traits.HasTraits):
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
-                                    ),
-                               Item(name='analyze_nth_frame',
-                                    label='analyze Nth frame',
                                     ),
                                Item(name='threshold_fraction',
                                     ),
@@ -766,10 +762,9 @@ class StrokelitudeClass(traits.HasTraits):
                 wx.PostEvent(self.frame, event)
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
-            processing_OK = (framenumber%self.analyze_nth_frame)==0
             if (self.enabled_box.GetValue() and
                 not self.mask_dirty):
-                if processing_OK:
+                if 1:
                     self.drawsegs_cache = []
 
                     h,w = this_image.shape
