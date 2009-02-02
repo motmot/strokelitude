@@ -101,15 +101,17 @@ typedef enum {
                                                                                                     { 2, 6,10,14,18,22,26,30,34,38,42},
                                                                                                     { 1, 5, 9,13,17,21,25,29,33,37,41}};
 
-	/* Function Prototypes: */
-		#if defined(INCLUDE_FROM_PROCESSIMAGESEND2PANELS_C)
-            dumpframe_error_t display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 );
-            static void InputImage2FrameImage( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 );
-            static void MapFrameImage2PanelArray(void);
-            static void ConvertFrameImage2PanelMessages(void);
-            static void PanelArray2USBPacketArray(void);
-            static usb_dev_handle *OpenUSBDev(void);
-            static dumpframe_error_t USBBulkWriteUSBPacketArray(void);
-            void say_hello();
-		#endif
+/* Function Prototypes: */
+#if defined(INCLUDE_FROM_PROCESSIMAGESEND2PANELS_C)
+dumpframe_error_t display_frame( void * data, intp stride0,
+                                 intp shape0, intp shape1, intp offset0, intp offset1 );
+static void InputImage2FrameImage( void * data, intp stride0,
+                                   intp shape0, intp shape1, intp offset0, intp offset1 );
+static void MapFrameImage2PanelArray(void);
+static void ConvertFrameImage2PanelMessages(void);
+static void PanelArray2USBPacketArray(void);
+static usb_dev_handle *OpenUSBDev(void);
+static dumpframe_error_t USBBulkWriteUSBPacketArray(void);
+void say_hello();
+#endif
 #endif
