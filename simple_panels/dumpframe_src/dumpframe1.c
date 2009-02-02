@@ -6,8 +6,8 @@
     pjp 04/20/08    version 1.0
 */
 
-#define INCLUDE_FROM_PROCESSIMAGESEND2PANELS_C
-#include "dumpframe1.h"
+/*#define INCLUDE_FROM_PROCESSIMAGESEND2PANELS_C*/
+#include "dumpframe1_internal.h"
 
 /* Global Variables: */
 /* Dangerous, but easier to access across functions */
@@ -15,7 +15,10 @@ USBPacketArrayWrapper_t USBPacketArray;
 PanelArrayWrapper_t     PanelArray;
 FrameImageWrapper_t     FrameImage;
 
-dumpframe_error_t display_frame( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
+dumpframe_error_t display_frame( dumpframe_device_t* device,
+                                 void * data, intptr_t stride0,
+                                 intptr_t shape0, intptr_t shape1,
+                                 intptr_t offset0, intptr_t offset1 )
 {
     dumpframe_error_t err;
 
@@ -32,11 +35,11 @@ dumpframe_error_t display_frame( void * data, intp stride0, intp shape0, intp sh
     PanelArray2USBPacketArray();
 
     /* usb_bulk_write every usb packet in USBPacketArray */
-    err = USBBulkWriteUSBPacketArray();
+    err = USBBulkWriteUSBPacketArray(device);
     return err;
 }
 
-static void InputImage2FrameImage( void * data, intp stride0, intp shape0, intp shape1, intp offset0, intp offset1 )
+void InputImage2FrameImage( void * data, intptr_t stride0, intptr_t shape0, intptr_t shape1, intptr_t offset0, intptr_t offset1 )
 {
     double inRowPos,inColPos;
     unsigned short fiRowN,fiColN,fiRowNum,fiColNum,fiColOver,fiColStuff=0,fiColOffset=0;
@@ -79,7 +82,7 @@ static void InputImage2FrameImage( void * data, intp stride0, intp shape0, intp 
     FrameImage.ColNum = fiColNum + fiColStuff;
 }
 
-static void MapFrameImage2PanelArray(void)
+void MapFrameImage2PanelArray(void)
 {
     unsigned char paRowN,paColN,paRowNum,paColNum,paColOffset,panelN=0;
     unsigned char fiRowStart,fiColStart;
@@ -100,7 +103,7 @@ static void MapFrameImage2PanelArray(void)
     }
 }
 
-static void ConvertFrameImage2PanelMessages(void)
+void ConvertFrameImage2PanelMessages(void)
 {
     unsigned char panelN,pixelVal,piRowN,piColN,piRowOffset,piColOffset;
     unsigned char rowValArray[3],colValArray[3],rowValArrayComp[3];
@@ -178,7 +181,7 @@ static void ConvertFrameImage2PanelMessages(void)
     }
 }
 
-static void PanelArray2USBPacketArray(void)
+void PanelArray2USBPacketArray(void)
 {
    unsigned char packetN=0,panelN=0,panelsInPacket,packetByteN,messageByteN;
 
@@ -203,7 +206,7 @@ static void PanelArray2USBPacketArray(void)
    }
 }
 
-static usb_dev_handle *OpenUSBDev(void)
+usb_dev_handle *OpenUSBDev(void)
 {
     struct usb_bus *bus;
     struct usb_device *dev;
@@ -222,29 +225,83 @@ static usb_dev_handle *OpenUSBDev(void)
     return NULL;
 }
 
-static dumpframe_error_t USBBulkWriteUSBPacketArray(void)
+dumpframe_error_t dumpframe_init(dumpframe_module_t**result){
+  dumpframe_module_t* tmp;
+
+  tmp = NULL;
+  tmp = (dumpframe_module_t*)malloc(sizeof(dumpframe_module_t));
+  if (tmp==NULL) {
+    return DUMPFRAME_MEMORY_ERROR;
+  }
+
+  usb_init();                                 /* Initialize USB library */
+  usb_find_busses();                          /* Find all USB busses */
+  usb_find_devices();                         /* Find all connected USB devices */
+
+  *result = tmp;
+  return DUMPFRAME_SUCCESS;
+}
+
+dumpframe_error_t dumpframe_device_init(dumpframe_module_t* module,
+                                        dumpframe_device_t** result) {
+  dumpframe_device_t* tmp;
+
+  tmp = NULL;
+  tmp = (dumpframe_device_t*)malloc(sizeof(dumpframe_device_t));
+  if (tmp==NULL) {
+    return DUMPFRAME_MEMORY_ERROR;
+  }
+
+  tmp->module = module;
+
+    if(!(tmp->dev = OpenUSBDev()))
+    {
+      free(tmp);
+      return DUMPFRAME_USB_DEVICE_NOT_FOUND;
+    }
+
+    if(usb_set_configuration(tmp->dev, 1) < 0)
+    {
+      free(tmp);
+      return DUMPFRAME_USB_SET_CONFIG_FAILED;
+    }
+
+    if(usb_claim_interface(tmp->dev, 0) < 0)
+    {
+      free(tmp);
+      return DUMPFRAME_USB_CLAIM_INTERFACE_FAILED;
+    }
+
+  *result = tmp;
+  return DUMPFRAME_SUCCESS;
+}
+
+dumpframe_error_t dumpframe_device_close(dumpframe_device_t*device){
+  if (device==NULL) {
+    return DUMPFRAME_MEMORY_ERROR;
+  }
+
+  usb_release_interface(device->dev, 0);
+  usb_close(device->dev);
+
+  free(device);
+  return DUMPFRAME_SUCCESS;
+}
+
+dumpframe_error_t dumpframe_close(dumpframe_module_t*module){
+  if (module==NULL) {
+    return DUMPFRAME_MEMORY_ERROR;
+  }
+  free(module);
+  return DUMPFRAME_SUCCESS;
+}
+
+dumpframe_error_t USBBulkWriteUSBPacketArray(dumpframe_device_t* device)
 {
     usb_dev_handle *dev = NULL;                 /* Device handle */
     unsigned char bytesWritten,packetN,outBufSize;
 
-    usb_init();                                 /* Initialize USB library */
-    usb_find_busses();                          /* Find all USB busses */
-    usb_find_devices();                         /* Find all connected USB devices */
-
-    if(!(dev = OpenUSBDev()))
-    {
-      return DUMPFRAME_USB_DEVICE_NOT_FOUND;
-    }
-
-    if(usb_set_configuration(dev, 1) < 0)
-    {
-      return DUMPFRAME_USB_SET_CONFIG_FAILED;
-    }
-
-    if(usb_claim_interface(dev, 0) < 0)
-    {
-      return DUMPFRAME_USB_CLAIM_INTERFACE_FAILED;
-    }
+    dev = device->dev;
 
     for (packetN = 0; packetN<USBPacketArray.PacketsInThisArray; packetN++) {
         outBufSize = USBPacketArray.Packet[packetN].BytesInPacketData;
@@ -261,9 +318,6 @@ static dumpframe_error_t USBBulkWriteUSBPacketArray(void)
         printf("Error: Bulk read failed\n");
     }
     */
-
-    usb_release_interface(dev, 0);
-    usb_close(dev);
 
     return DUMPFRAME_SUCCESS;
 }

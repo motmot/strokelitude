@@ -35,6 +35,21 @@ else:
     my_shlib_fname = os.path.abspath(my_shlib_fname)
     my_shlib = ctypes.cdll.LoadLibrary(my_shlib_fname)
 
+my_shlib.dumpframe_init.restype = ctypes.c_int
+my_shlib.dumpframe_init.argtypes = [ ctypes.c_void_p, # data
+                                     ]
+my_shlib.dumpframe_close.restype = ctypes.c_int
+my_shlib.dumpframe_close.argtypes = [ ctypes.c_void_p, # data
+                                     ]
+
+my_shlib.dumpframe_device_init.restype = ctypes.c_int
+my_shlib.dumpframe_device_init.argtypes = [ ctypes.c_void_p, # data
+                                            ctypes.c_void_p, # data
+                                            ]
+my_shlib.dumpframe_device_close.restype = ctypes.c_int
+my_shlib.dumpframe_device_close.argtypes = [ ctypes.c_void_p, # data
+                                             ]
+
 my_shlib.display_frame.restype = ctypes.c_int
 my_shlib.display_frame.argtypes = [ ctypes.c_void_p, # data
                                     intptr_type, # stride0
@@ -42,20 +57,44 @@ my_shlib.display_frame.argtypes = [ ctypes.c_void_p, # data
                                     intptr_type, intptr_type, # offset0, offset1
                                     ]
 
+def CHK(retval):
+    if retval != 0:
+        raise RuntimeError("C callback returned error: %d"%retval)
+
+######################
+# initialize
+class ModuleT(ctypes.Structure):
+    pass
+class DeviceT(ctypes.Structure):
+    pass
+ModuleT_p = ctypes.POINTER(ModuleT)
+DeviceT_p = ctypes.POINTER(DeviceT)
+
+global module_ptr
+module_ptr = ModuleT_p()
+
+CHK(my_shlib.dumpframe_init(ctypes.byref(module_ptr)))
+
 ######################
 
-def display_frame( arr ):
-    arr = np.asarray( arr )
-    if arr.shape != ( 4*8, 11*8 ):
-        raise ValueError('expected shape of 4x11')
-    if arr.dtype != np.uint8:
-        raise ValueError('expected uint8 dtype')
+class DumpframeDevice:
+    def __init__(self):
+        global module_ptr
 
-    x_offset = y_offset = 0
-    retval = my_shlib.display_frame( arr.ctypes.data,
+        self.device_ptr = DeviceT_p()
+        CHK(my_shlib.dumpframe_device_init(module_ptr,ctypes.byref(self.device_ptr)))
+
+    def display_frame( self, arr ):
+        arr = np.asarray( arr )
+        if arr.shape != ( 4*8, 11*8 ):
+            raise ValueError('expected shape of 4x11')
+        if arr.dtype != np.uint8:
+            raise ValueError('expected uint8 dtype')
+
+        x_offset = y_offset = 0
+        CHK( my_shlib.display_frame( self.device_ptr,
+                                     arr.ctypes.data,
                                      arr.ctypes.strides[0],
                                      arr.ctypes.shape[0],
                                      arr.ctypes.shape[1],
-                                     x_offset,y_offset)
-    if retval != 0:
-        raise RuntimeError("C callback returned error: %d"%retval)
+                                     x_offset,y_offset) )

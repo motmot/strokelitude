@@ -44,6 +44,10 @@ class StripeClassWorker(StripeClass):
         self.vel = 0.0
         self.last_diff_degrees = 0.0
         self.incoming_data_queue = Queue.Queue()
+        if simple_panels is not None:
+            self.panel_device = simple_panels.DumpframeDevice()
+        else:
+            self.panel_device = None
 
     def set_incoming_queue(self,data_queue):
         self.incoming_data_queue = data_queue
@@ -101,10 +105,10 @@ class StripeClassWorker(StripeClass):
         # make the stripe pixels black
         self.arr[:,pix_start:pix_stop]=0
 
-        if simple_panels is not None:
+        if self.panel_device is not None:
             # send to USB
             try:
-                simple_panels.display_frame(self.arr)
+                self.panel_device.display_frame(self.arr)
             except:
                 sys.stderr.write(
                     'ERROR displaying frame. (Hint: try DISABLE_PANELS=1)\n')

@@ -168,6 +168,11 @@ class StripeClassWorker(StripeClass):
                  stimulus_state_queue=None,
                  stimulus_timeseries_queue=None):
         super(StripeClassWorker,self).__init__()
+        if simple_panels is not None:
+            self.panel_device = simple_panels.DumpframeDevice()
+        else:
+            self.panel_device = None
+
         self.panel_height=4
         self.panel_width=11
         self.compute_width=12
@@ -270,12 +275,14 @@ class StripeClassWorker(StripeClass):
 
         start_display_timestamp = time.time()
 
-        if simple_panels is not None:
+        if self.panel_device is not None:
             # send to USB
-            simple_panels.display_frame(self.arr)
-        else:
-            sys.stdout.write('%d '%round(pix_center))
-            sys.stdout.flush()
+            try:
+                self.panel_device.display_frame(self.arr)
+            except:
+                sys.stderr.write(
+                    'ERROR displaying frame. (Hint: try DISABLE_PANELS=1)\n')
+                raise
 
         stop_display_timestamp = time.time()
         # see ER_data_format.py
