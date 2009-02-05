@@ -89,7 +89,9 @@ class StateMachine(traits.HasTraits):
                 self.current_state_finished_time = now+duration_sec
                 print 'switching to open loop sweep'
                 self.display_text_queue.put(
-                    'open loop sweep for %.1f sec'%duration_sec)
+                    'open loop sweep from %.1f to %.1f at %.1f deg/sec for %.1f sec'%(
+                    start_pos_deg, stop_pos_deg, velocity_dps,
+                    duration_sec,))
             else:
                 raise ValueError('Unknown message: %s'%incoming_message)
 
