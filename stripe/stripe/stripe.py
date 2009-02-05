@@ -32,8 +32,9 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
                         )
 
 class StripeClassWorker(StripeClass):
-    def __init__(self):
+    def __init__(self,display_text_queue=None):
         super(StripeClassWorker,self).__init__()
+        self.display_text_queue=display_text_queue
         self.panel_height=4
         self.panel_width=11
         self.compute_width=12
@@ -48,6 +49,12 @@ class StripeClassWorker(StripeClass):
             self.panel_device = simple_panels.DumpframeDevice()
         else:
             self.panel_device = None
+
+    def _gain_changed(self):
+        self.display_text_queue.put('gain %.1f'%self.gain)
+
+    def _offset_changed(self):
+        self.display_text_queue.put('offset %.1f'%self.offset)
 
     def set_incoming_queue(self,data_queue):
         self.incoming_data_queue = data_queue

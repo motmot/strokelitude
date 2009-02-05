@@ -1,8 +1,12 @@
-normal_gain = -900
+normal_gain = 20
 reverse_gain = -normal_gain
 
+n_repeats = 10
 for gain in [normal_gain,reverse_gain]:
-    for repeat in range(10):
+    for repeat in range(n_repeats):
+
+        stripe_control.show_string(
+            'gain %s, repeat %d of %d'%(gain,repeat+1,n_repeats))
 
         # 30 seconds closed loop
         stripe_control.closed_loop( gain=gain, offset=0.0, duration_sec=30 )

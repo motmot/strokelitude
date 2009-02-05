@@ -22,10 +22,12 @@ R2D = 180.0/np.pi
 D2R = np.pi/180.0
 
 class StateMachine(traits.HasTraits):
+    """runs in stimulus control process, communicates with user script via queues"""
     current_state = traits.Str('offline')
 
     def __init__(self, to_state_machine, from_state_machine,
-                 stimulus_state_queue,stimulus_timeseries_queue):
+                 stimulus_state_queue,stimulus_timeseries_queue,
+                 display_text_queue):
         super(StateMachine,self).__init__()
         self.to_state_machine = to_state_machine
         self.from_state_machine = from_state_machine
@@ -40,6 +42,7 @@ class StateMachine(traits.HasTraits):
 
         self.stimulus_state_queue = stimulus_state_queue
         self.stimulus_timeseries_queue = stimulus_timeseries_queue
+        self.display_text_queue = display_text_queue
 
     def _current_state_changed(self):
         # see ER_data_format.py
@@ -64,6 +67,9 @@ class StateMachine(traits.HasTraits):
                 now = time.time()
                 self.current_state_finished_time = now+duration_sec
                 print 'switching to closed loop'
+                self.display_text_queue.put(
+                    'closed loop for %.1f sec (gain=%.1f, offset=%.1f)'%(
+                    duration_sec, self.gain, self.offset))
             elif incoming_message.startswith('OLs '):
                 parts = incoming_message.split()
                 tmp, start_pos_deg, stop_pos_deg, velocity_dps = parts
@@ -82,6 +88,8 @@ class StateMachine(traits.HasTraits):
                 now = time.time()
                 self.current_state_finished_time = now+duration_sec
                 print 'switching to open loop sweep'
+                self.display_text_queue.put(
+                    'open loop sweep for %.1f sec'%duration_sec)
             else:
                 raise ValueError('Unknown message: %s'%incoming_message)
 
@@ -104,10 +112,14 @@ class StateMachine(traits.HasTraits):
         self.stripe_pos_degrees += vel_dps*dt
         return self.stripe_pos_degrees, vel_dps
 
-class StripeControlRemoteProcess():
-    def __init__(self,to_state_machine,from_state_machine):
+class StripeControlRemoteProcess:
+    """Runs in the same process as the user's experiment script"""
+    def __init__(self,to_state_machine,from_state_machine,display_text_queue):
         self.to_state_machine = to_state_machine
         self.from_state_machine = from_state_machine
+        self.display_text_queue = display_text_queue
+    def show_string( self, msg ):
+        self.display_text_queue.put(msg)
     def closed_loop( self, gain=-900.0, offset=0.0, duration_sec=30 ):
         to_msg = 'CL %s %s %s'%(repr(gain),repr(offset),repr(duration_sec))
         self._send(to_msg)
@@ -132,11 +144,12 @@ class StripeControlRemoteProcess():
 
 def stripe_control_runner(experiment_file,
                           to_state_machine,
-                          from_state_machine):
+                          from_state_machine,
+                          display_text_queue):
     # this runs in a separate process
     print 'running experiment',experiment_file
     stripe_control = StripeControlRemoteProcess(
-        to_state_machine,from_state_machine)
+        to_state_machine,from_state_machine,display_text_queue)
     execfile(experiment_file)
 
 class StripePluginInfo(strokelitude.plugin.PluginBase):
@@ -151,11 +164,9 @@ class StripePluginInfo(strokelitude.plugin.PluginBase):
             'stimulus_timeseries_queue':ER_data_format.TimeseriesDescription}
 
 class StripeClass(remote_traits.MaybeRemoteHasTraits):
-    ## gain = traits.Float(-900.0)
-    ## offset = traits.Float(0.0)
+    """base class of worker subclass, and also runs in GUI process"""
     experiment_file = traits.File()
     start_experiment = traits.Button(label='start experiment')
-    ## stop_experiment = traits.Button(label='stop experiment')
 
     traits_view = View( Group( (
         Item(name='start_experiment',show_label=False),
@@ -164,9 +175,12 @@ class StripeClass(remote_traits.MaybeRemoteHasTraits):
                         )
 
 class StripeClassWorker(StripeClass):
+    """runs in process that updates panels"""
     def __init__(self,
                  stimulus_state_queue=None,
-                 stimulus_timeseries_queue=None):
+                 stimulus_timeseries_queue=None,
+                 display_text_queue=None,
+                 ):
         super(StripeClassWorker,self).__init__()
         if simple_panels is not None:
             self.panel_device = simple_panels.DumpframeDevice()
@@ -191,11 +205,13 @@ class StripeClassWorker(StripeClass):
         self.from_state_machine = multiprocessing.Queue()
         self.stimulus_state_queue = stimulus_state_queue
         self.stimulus_timeseries_queue = stimulus_timeseries_queue
+        self.display_text_queue = display_text_queue
         self.state_machine = StateMachine(
             self.to_state_machine,
             self.from_state_machine,
             stimulus_state_queue=self.stimulus_state_queue,
-            stimulus_timeseries_queue=self.stimulus_timeseries_queue)
+            stimulus_timeseries_queue=self.stimulus_timeseries_queue,
+            display_text_queue=self.display_text_queue )
 
     def _start_experiment_fired(self):
         if not self.experiment_file:
@@ -207,7 +223,8 @@ class StripeClassWorker(StripeClass):
         self.sci = multiprocessing.Process(target=stripe_control_runner,
                                            args=(self.experiment_file,
                                                  self.to_state_machine,
-                                                 self.from_state_machine))
+                                                 self.from_state_machine,
+                                                 self.display_text_queue))
 
         # notify GUI that we are running experiment...
         ## self.is_offline = False
