@@ -520,8 +520,8 @@ class StrokelitudeClass(traits.HasTraits):
 
                 panel = xrc.XRCCTRL(self.frame,side.upper()+'_LIVEVIEW_PANEL')
                 sizer = wx.BoxSizer(wx.HORIZONTAL)
-                self.enable_window = Window( panel, -1, component = component )
-                control = self.enable_window.control
+                enable_window = Window( panel, -1, component = component )
+                control = enable_window.control
                 sizer.Add(control, 1, wx.EXPAND)
                 panel.SetSizer( sizer )
                 #control.GetParent().SetMinSize(control.GetMinSize())
