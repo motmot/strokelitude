@@ -393,6 +393,8 @@ class StrokelitudeClass(traits.HasTraits):
         else:
             self.enabled_box.Enable(True)
             self.recompute_mask_button.Enable(False)
+            if self.save_to_disk:
+                print 'should save new mask'
 
     def _save_to_disk_changed(self):
         if self.save_to_disk:
@@ -456,7 +458,7 @@ class StrokelitudeClass(traits.HasTraits):
         self.save_data_queue = Queue.Queue()
 
         self.vals_queue = Queue.Queue()
-        self.bg_queue = Queue.Queue()
+        self.bg_cmd_queue = Queue.Queue()
         self.new_bg_image_lock = threading.Lock()
         self.new_bg_image = None
 
@@ -530,15 +532,15 @@ class StrokelitudeClass(traits.HasTraits):
             image = np.zeros((640,480), dtype=np.uint8)
 
             # Create a plot data obect and give it this data
-            pd = ArrayPlotData()
-            pd.set_data("imagedata", image)
-            self.bg_pd = pd
+            self.bg_pd = ArrayPlotData()
+            self.bg_pd.set_data("imagedata", image)
 
             # Create the plot
-            plot = Plot(pd, default_origin="top left")
+            plot = Plot(self.bg_pd, default_origin="top left")
+            self.bg_plot = plot
             plot.x_axis.orientation = "top"
             colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
-            img_plot = plot.img_plot("imagedata",colormap=colormap)[0]
+            plot.img_plot("imagedata",colormap=colormap)[0]
 
             plot.padding = 30
             plot.bgcolor = "white"
@@ -754,7 +756,7 @@ class StrokelitudeClass(traits.HasTraits):
             while 1:
                 try:
                     # all we care about is last command
-                    command = self.bg_queue.get_nowait()
+                    command = self.bg_cmd_queue.get_nowait()
                 except Queue.Empty, err:
                     break
 
@@ -886,18 +888,20 @@ class StrokelitudeClass(traits.HasTraits):
 
     def OnTakeBg(self,event):
         self.mask_dirty = True
-        self.bg_queue.put('take')
+        self.bg_cmd_queue.put('take')
 
     def OnClearBg(self,event):
         self.mask_dirty = True
-        self.bg_queue.put('clear')
+        self.bg_cmd_queue.put('clear')
 
     def OnNewBGReady(self,event):
         with self.new_bg_image_lock:
             new_bg_image = self.new_bg_image
             self.new_bg_image = None
+        if self.save_to_disk:
+            print 'should save BG image to disk'
         self.bg_pd.set_data("imagedata", new_bg_image)
-        print 'should trigger redisplay of background image (but how?)'
+        self.bg_plot.request_redraw()
 
     def OnDataReady(self, event):
         lrvals = None
