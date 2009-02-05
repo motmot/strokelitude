@@ -100,12 +100,38 @@ class MaskData(traits.HasTraits):
     # these are just necesary for establishing limits in the view:
     maxx = traits.Float(699.9)
     maxy = traits.Float(699.9)
-    maxdim = traits.Float(500)
+    maxdim = traits.Property(depends_on=['maxx','maxy'])
 
-    def _maxx_changed(self):
-        self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
-    def _maxy_changed(self):
-        self.maxdim = np.sqrt(self.maxx**2+self.maxy**2)
+    rotation = traits.Property(depends_on=['gamma'])
+    translation = traits.Property(depends_on=['x','y'])
+
+    quads_left = traits.Property(depends_on=[
+        'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
+        'rotation','translation',
+        ])
+
+    quads_right = traits.Property(depends_on=[
+        'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
+        'rotation','translation',
+        ])
+
+    extra_linesegs = traits.Property(depends_on=[
+        'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
+        'rotation','translation',
+        ])
+
+    all_linesegs = traits.Property(depends_on=[
+        'quads_left', 'quads_right', 'extra_linesegs',
+        ] )
+
+    @traits.cached_property
+    def _get_all_linesegs(self):
+        # concatenate lists
+        return (self.quads_left + self.quads_right + self.extra_linesegs)
+
+    @traits.cached_property
+    def _get_maxdim(self):
+        return np.sqrt(self.maxx**2+self.maxy**2)
 
     def _get_wingsplit_translation(self,side):
         if side=='left':
@@ -113,34 +139,17 @@ class MaskData(traits.HasTraits):
         elif side=='right':
             return np.array([[0.0],[-self.wingsplit]])
 
-    def _gamma_changed(self):
+    @traits.cached_property
+    def _get_rotation(self):
         gamma = self.gamma*D2R
-        self._rotation = np.array([[ np.cos( gamma ), -np.sin(gamma)],
-                                   [ np.sin( gamma ), np.cos(gamma)]])
+        return np.array([[ np.cos( gamma ), -np.sin(gamma)],
+                         [ np.sin( gamma ), np.cos(gamma)]])
 
-    def _xy_changed(self):
-        self._translation = np.array( [[self.x],
-                                       [self.y]],
-                                      dtype=np.float64 )
-
-    # If either self.x or self.y changed, call _xy_changed()
-    _x_changed = _xy_changed
-    _y_changed = _xy_changed
-
-    def _alpha_beta_nbins_changed(self):
-        alpha = self.alpha*D2R
-        beta = self.beta*D2R
-
-    # If any of alpha, beta or nbins changed
-    _alpha_changed = _alpha_beta_nbins_changed
-    _beta_changed = _alpha_beta_nbins_changed
-    _nbins_changed = _alpha_beta_nbins_changed
-
-    def __init__(self,*args,**kwargs):
-        super(MaskData,self).__init__(*args,**kwargs)
-        self._gamma_changed()
-        self._xy_changed()
-        self._alpha_beta_nbins_changed()
+    @traits.cached_property
+    def _get_translation(self):
+        return np.array( [[self.x],
+                          [self.y]],
+                         dtype=np.float64 )
 
     traits_view = View( Group( ( Item('x',
                                       style='custom',
@@ -163,6 +172,18 @@ class MaskData(traits.HasTraits):
                         title = 'Mask Parameters',
                         )
 
+    @traits.cached_property
+    def _get_extra_linesegs(self):
+        return self.get_extra_linesegs()
+
+    @traits.cached_property
+    def _get_quads_left(self):
+        return self.get_quads('left')
+
+    @traits.cached_property
+    def _get_quads_right(self):
+        return self.get_quads('right')
+
     def get_extra_linesegs(self):
         """return linesegments that contextualize parameters"""
         linesegs = []
@@ -170,13 +191,13 @@ class MaskData(traits.HasTraits):
             # longitudinal axis (along fly's x coord)
             verts = np.array([[-100,100],
                               [0,     0]],dtype=np.float)
-            verts = np.dot(self._rotation, verts) + self._translation
+            verts = np.dot(self.rotation, verts) + self.translation
             linesegs.append( verts.T.ravel() )
         if 1:
             # transverse axis (along fly's y coord)
             verts = np.array([[0,0],
                               [-10,10]],dtype=np.float)
-            verts = np.dot(self._rotation, verts) + self._translation
+            verts = np.dot(self.rotation, verts) + self.translation
             linesegs.append( verts.T.ravel() )
         if 1:
             # half-circle centers
@@ -187,8 +208,8 @@ class MaskData(traits.HasTraits):
             vleft = verts+self._get_wingsplit_translation('left')
             vright = verts+self._get_wingsplit_translation('right')
 
-            vleft = np.dot(self._rotation, vleft) + self._translation
-            vright = np.dot(self._rotation, vright) + self._translation
+            vleft = np.dot(self.rotation, vleft) + self.translation
+            vright = np.dot(self.rotation, vright) + self.translation
 
             linesegs.append( vleft.T.ravel() )
             linesegs.append( vright.T.ravel() )
@@ -199,7 +220,7 @@ class MaskData(traits.HasTraits):
                               [20.0,0.0, 0.0]])
             vleft = verts+self._get_wingsplit_translation('left')
 
-            vleft = np.dot(self._rotation, vleft) + self._translation
+            vleft = np.dot(self.rotation, vleft) + self.translation
 
             linesegs.append( vleft.T.ravel() )
 
@@ -242,7 +263,7 @@ class MaskData(traits.HasTraits):
             wing_verts =  np.hstack(( inner, outer, inner[:,np.newaxis,0] ))
             wing_verts += self._get_wingsplit_translation(side)
 
-            wing_verts = np.dot(self._rotation, wing_verts) + self._translation
+            wing_verts = np.dot(self.rotation, wing_verts) + self.translation
             linesegs.append( wing_verts.T.ravel() )
 
         return linesegs
@@ -265,7 +286,7 @@ class MaskData(traits.HasTraits):
         verts = np.array( [[ 0, 1000.0*np.cos(theta)],
                            [ 0, 1000.0*np.sin(theta)]] )
         verts = verts + self._get_wingsplit_translation(side)
-        verts = np.dot(self._rotation, verts) + self._translation
+        verts = np.dot(self.rotation, verts) + self.translation
         linesegs.append( verts.T.ravel() )
         return linesegs
 
@@ -658,8 +679,8 @@ class StrokelitudeClass(traits.HasTraits):
         with self.recomputing_lock:
             count = 0
 
-            left_quads = self.maskdata.get_quads('left')
-            right_quads = self.maskdata.get_quads('right')
+            left_quads = self.maskdata.quads_left
+            right_quads = self.maskdata.quads_right
 
             self.left_mat = []
             for quad in left_quads:
@@ -725,9 +746,7 @@ class StrokelitudeClass(traits.HasTraits):
             if self.draw_mask_ctrl.IsChecked():
                 # XXX this is naughty -- it's not threasafe.
                 # concatenate lists
-                extra = ( self.maskdata.get_quads('left') +
-                          self.maskdata.get_quads('right') +
-                          self.maskdata.get_extra_linesegs() )
+                extra = self.maskdata.all_linesegs
 
                 draw_linesegs.extend( extra )
 
