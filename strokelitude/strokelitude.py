@@ -436,6 +436,7 @@ class StrokelitudeClass(traits.HasTraits):
         self.stream_plugin_tables = None
         self.plugin_table_dtypes = None
         self.current_plugin_descr_dict = {}
+        self.display_text_queue = None
 
         self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
         self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
@@ -600,6 +601,10 @@ class StrokelitudeClass(traits.HasTraits):
 
     def OnTimer(self,event):
         self.service_save_data()
+        if self.display_text_queue is not None:
+            while self.display_text_queue.qsize() > 0:
+                print('self.display_text_queue.get_nowait()',
+                      self.display_text_queue.get_nowait())
 
     def service_save_data(self):
         # pump the queue
@@ -659,7 +664,8 @@ class StrokelitudeClass(traits.HasTraits):
         plugin = self.name2plugin[name]
         (hastraits_proxy, self.current_plugin_queue,
          self.current_plugin_save_queues,
-         self.current_plugin_descr_dict) = plugin.startup()
+         self.current_plugin_descr_dict,
+         self.display_text_queue) = plugin.startup()
 
         # add to display
 

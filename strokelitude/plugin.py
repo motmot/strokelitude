@@ -2,7 +2,9 @@ import multiprocessing
 import remote_traits
 import warnings
 
-def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,save_data_queues,
+def mainloop(klass_proxy,klass_worker,
+             hostname,port,obj_name,data_queue,save_data_queues,
+             display_text_queue,
              quit_event):
 
     # the mainloop for plugins
@@ -11,7 +13,8 @@ def mainloop(klass_proxy,klass_worker,hostname,port,obj_name,data_queue,save_dat
     server = remote_traits.ServerObj(hostname,port)
     server.serve_name(obj_name,instance_proxy)
 
-    instance_worker = klass_worker(**save_data_queues)
+    instance_worker = klass_worker(display_text_queue=display_text_queue,
+                                   **save_data_queues)
 
     instance_worker.set_incoming_queue(data_queue)
 
@@ -67,7 +70,7 @@ class PluginBase(object):
         save_data_queues = {}
         for name,description in descr_dict.iteritems():
             save_data_queues[name] = multiprocessing.Queue()
-
+        display_text_queue = multiprocessing.Queue()
         do_hostname = 'localhost'
         do_port = 8112
         if self.child is not None:
@@ -79,10 +82,12 @@ class PluginBase(object):
         oname = 'obj'
         data_queue = multiprocessing.Queue()
         self.child = multiprocessing.Process( target=mainloop,
-                                              args=(klass_proxy,klass_worker,
-                                                    do_hostname,do_port,
-                                                    oname,data_queue,save_data_queues,
-                                                    self.quit_event))
+                                              args=(
+            klass_proxy,klass_worker,
+            do_hostname,do_port,
+            oname,data_queue,save_data_queues,
+            display_text_queue,
+            self.quit_event))
         self.child.start() # fork subprocess
 
         view_hostname='localhost'
@@ -92,4 +97,5 @@ class PluginBase(object):
                                                                    do_port,
                                                                    oname)
 
-        return hastraits_proxy, data_queue, save_data_queues, descr_dict
+        return (hastraits_proxy, data_queue, save_data_queues,
+                descr_dict, display_text_queue)
