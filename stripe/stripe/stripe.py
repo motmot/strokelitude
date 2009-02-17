@@ -75,7 +75,7 @@ class StripeClassWorker(StripeClass):
             (framenumber, left_angle_degrees, right_angle_degrees,
              trigger_timestamp) = last_data
             if not (np.isnan(left_angle_degrees) or np.isnan(right_angle_degrees)):
-                diff_degrees = left_angle_degrees + right_angle_degrees # (opposite signs already from angle measurement)
+                diff_degrees = right_angle_degrees - left_angle_degrees
                 self.last_diff_degrees = diff_degrees
 
         # update self.vel every frame so that changes in gain and offset noticed

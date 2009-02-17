@@ -261,7 +261,7 @@ class StripeClassWorker(StripeClass):
             if not (np.isnan(left_angle_degrees) or
                     np.isnan(right_angle_degrees)):
                 # (opposite signs already from angle measurement)
-                diff_degrees = left_angle_degrees + right_angle_degrees
+                diff_degrees = right_angle_degrees - left_angle_degrees
                 self.last_diff_degrees = diff_degrees
 
         self.stripe_pos_degrees, self.vel_dps = \
