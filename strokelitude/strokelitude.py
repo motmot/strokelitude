@@ -422,6 +422,8 @@ class StrokelitudeClass(traits.HasTraits):
             self.stream_ain_table   = self.streaming_file.createTable(
                 self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
                 "AIN data",expectedrows=100000)
+            self.stream_ain_table.attrs.channel_names = self.timestamp_modeler.channel_names
+
             self.stream_time_data_table = self.streaming_file.createTable(
                 self.streaming_file.root,'time_data',TimeDataDescription,
                 "time data",expectedrows=1000)
