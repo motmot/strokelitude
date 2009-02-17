@@ -77,6 +77,11 @@ class BufferAllocator:
     def __call__(self, w, h):
         return FastImage.FastImage8u(FastImage.Size(w,h))
 
+mult_sign={True:{'left':1,
+                 'right':-1},
+           False:{'left':-1,
+                  'right':1}}
+
 class MaskData(traits.HasTraits):
     # lengths, in pixels
 
@@ -85,6 +90,8 @@ class MaskData(traits.HasTraits):
     x = traits.Range(0.0, 656.0, 401.0, mode='slider', set_enter=True)
     y = traits.Range(0.0, 491.0, 273.5, mode='slider', set_enter=True)
     wingsplit = traits.Range(0.0, 180.0, 70.3, mode='slider', set_enter=True)
+
+    view_from_below = traits.Bool(True)
 
     # The bounds of these should be dynamically set
     r1 = traits.Range(0.0, 656.0, 22.0, mode='slider', set_enter=True)
@@ -108,17 +115,17 @@ class MaskData(traits.HasTraits):
 
     quads_left = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
-        'rotation','translation',
+        'rotation','translation','view_from_below',
         ])
 
     quads_right = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
-        'rotation','translation',
+        'rotation','translation','view_from_below',
         ])
 
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
-        'rotation','translation',
+        'rotation','translation','view_from_below',
         ])
 
     all_linesegs = traits.Property(depends_on=[
@@ -135,10 +142,8 @@ class MaskData(traits.HasTraits):
         return np.sqrt(self.maxx**2+self.maxy**2)
 
     def _get_wingsplit_translation(self,side):
-        if side=='left':
-            return np.array([[0.0],[self.wingsplit]])
-        elif side=='right':
-            return np.array([[0.0],[-self.wingsplit]])
+        sign = mult_sign[self.view_from_below][side]
+        return np.array([[0.0],[sign*self.wingsplit]])
 
     @traits.cached_property
     def _get_rotation(self):
@@ -158,6 +163,7 @@ class MaskData(traits.HasTraits):
                                  Item('y',
                                       style='custom',
                                       ),
+                                 Item('view_from_below'),
                                  Item('wingsplit',
                                       style='custom',
                                       ),
@@ -246,14 +252,13 @@ class MaskData(traits.HasTraits):
         alpha = self.alpha*D2R
         beta = self.beta*D2R
 
-        if side=='left':
-            all_theta = np.linspace(alpha,beta,self.nbins+1)
-        elif side=='right':
-            all_theta = np.linspace(-alpha,-beta,self.nbins+1)
+        all_theta = np.linspace(alpha,beta,self.nbins+1)
+
+        sign = mult_sign[self.view_from_below][side]
 
         linesegs = []
         for i in range(self.nbins):
-            theta = all_theta[i:(i+2)]
+            theta = sign*all_theta[i:(i+2)]
             # inner radius
             inner = np.array([self.r1*np.cos(theta),
                               self.r1*np.sin(theta)])
@@ -273,9 +278,6 @@ class MaskData(traits.HasTraits):
         """convert index to angle (in radians)"""
         alpha = self.alpha*D2R
         beta = self.beta*D2R
-        if side=='right':
-            alpha = -alpha
-            beta = -beta
         frac = idx/self.nbins
         diff = beta-alpha
         return alpha+frac*diff
