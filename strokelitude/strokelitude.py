@@ -252,13 +252,12 @@ class MaskData(traits.HasTraits):
         alpha = self.alpha*D2R
         beta = self.beta*D2R
 
-        all_theta = np.linspace(alpha,beta,self.nbins+1)
-
         sign = mult_sign[self.view_from_below][side]
+        all_theta = sign*np.linspace(alpha,beta,self.nbins+1)
 
         linesegs = []
         for i in range(self.nbins):
-            theta = sign*all_theta[i:(i+2)]
+            theta = all_theta[i:(i+2)]
             # inner radius
             inner = np.array([self.r1*np.cos(theta),
                               self.r1*np.sin(theta)])
@@ -285,6 +284,8 @@ class MaskData(traits.HasTraits):
     def get_span_lineseg(self,side,theta):
         """draw line on side at angle theta (in radians)"""
         linesegs = []
+        sign = mult_sign[self.view_from_below][side]
+        theta *= sign
 
         verts = np.array( [[ 0, 1000.0*np.cos(theta)],
                            [ 0, 1000.0*np.sin(theta)]] )
