@@ -1,16 +1,24 @@
+import os, sys, random
 import multiprocessing
 import remote_traits
 import warnings
 
 def mainloop(klass_proxy,klass_worker,
              hostname,port,obj_name,data_queue,save_data_queues,
-             display_text_queue,
+             display_text_queue,key,
              quit_event):
+    """run a new process to handle the strokelitude plugin
+
+    By running the plugin in a separate process, threading issues are
+    greatly reduced, as there are no shared variables between the two
+    processes.
+
+    """
 
     # the mainloop for plugins
-    #print 'process %r is starting'%multiprocessing.current_process()
+    #print 'process PID %s %r is starting'%(os.getpid(),multiprocessing.current_process())
     instance_proxy = klass_proxy()
-    server = remote_traits.ServerObj(hostname,port)
+    server = remote_traits.ServerObj(hostname,port,key=key)
     server.serve_name(obj_name,instance_proxy)
 
     instance_worker = klass_worker(display_text_queue=display_text_queue,
@@ -80,22 +88,24 @@ class PluginBase(object):
 
         self.quit_event.clear()
         oname = 'obj'
+        key = random.randint(-sys.maxint,sys.maxint)
         data_queue = multiprocessing.Queue()
         self.child = multiprocessing.Process( target=mainloop,
                                               args=(
             klass_proxy,klass_worker,
             do_hostname,do_port,
             oname,data_queue,save_data_queues,
-            display_text_queue,
+            display_text_queue, key,
             self.quit_event))
         self.child.start() # fork subprocess
 
         view_hostname='localhost'
         view_port = 8113
-        self.server = remote_traits.ServerObj(view_hostname,view_port)
+        self.server = remote_traits.ServerObj(view_hostname,view_port,key=key)
+
         hastraits_proxy = self.server.get_proxy_hastraits_instance(do_hostname,
                                                                    do_port,
-                                                                   oname)
-
+                                                                   oname,
+                                                                   key=key)
         return (hastraits_proxy, data_queue, save_data_queues,
                 descr_dict, display_text_queue)
