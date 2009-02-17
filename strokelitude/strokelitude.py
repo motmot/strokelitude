@@ -32,6 +32,7 @@ from enthought.chaco.api import create_line_plot, add_default_axes, \
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
      ImageInspectorOverlay
+import fview_ext_trig.live_timestamp_modeler as modeler_module
 
 # trigger extraction
 RESFILE = pkg_resources.resource_filename(__name__,"strokelitude.xrc")
@@ -367,11 +368,14 @@ class StrokelitudeClass(traits.HasTraits):
     light_on_dark = traits.Bool(True)
     save_to_disk = traits.Bool(False)
     streaming_filename = traits.File
+    timestamp_modeler = traits.Instance(
+        modeler_module.LiveTimestampModelerWithAnalogInput )
 
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
                                     ),
+                               #Item(name='timestamp_modeler'),
                                Item(name='threshold_fraction',
                                     ),
                                Item(name='light_on_dark',
