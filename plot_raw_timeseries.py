@@ -29,6 +29,13 @@ if 1:
     chans.remove('timestamps')
 
     names = h5.root.ain_wordstream.attrs.channel_names
+    if 0:
+        Vcc = h5.root.ain_wordstream.attrs.Vcc
+    else:
+        Vcc=3.3
+        print 'Vcc',Vcc
+    ADCmax = (2**10)-1
+    analog_gain = Vcc/ADCmax
 
     t0 = r['timestamps'][0]
     N_subplots = len(chans)+3
@@ -36,19 +43,20 @@ if 1:
     for i in range(N_subplots):
         ax = pylab.subplot(N_subplots,1,i+1,sharex=ax)
         if i < len(chans):
-            ax.plot(r['timestamps']-t0,r[chans[i]],label=names[int(chans[i])])
-            ax.set_ylabel('(ADC units)')
+            ax.plot(r['timestamps']-t0,r[chans[i]]*analog_gain,
+                    label=names[int(chans[i])])
+            ax.set_ylabel('V')
             ax.legend()
         elif i == len(chans):
             ax.plot(stroke_times-t0,stroke_diff,label='R-L')
             ax.set_ylabel('R-L (degrees)')
             ax.legend()
         elif i == len(chans)+1:
-            ax.plot(stroke_times-t0,stroke_data['right'],label='R')
+            ax.plot(stroke_times-t0,90-stroke_data['right'],label='R')
             ax.set_ylabel('R (degrees)')
             ax.legend()
         elif i == len(chans)+2:
-            ax.plot(stroke_times-t0,stroke_data['left'],label='L')
+            ax.plot(stroke_times-t0,90-stroke_data['left'],label='L')
             ax.set_ylabel('L (degrees)')
             ax.legend()
     ax.set_xlabel('Time (sec)')
