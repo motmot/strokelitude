@@ -357,6 +357,14 @@ StrokelitudeDataDescription = data_format.StrokelitudeDataDescription
 StrokelitudeDataCol_dtype = tables.Description(
     StrokelitudeDataDescription().columns)._v_nestedDescr
 
+AnalogInputWordstreamDescription = data_format.AnalogInputWordstreamDescription
+AnalogInputWordstream_dtype =  tables.Description(
+    AnalogInputWordstreamDescription().columns)._v_nestedDescr
+
+TimeDataDescription = data_format.TimeDataDescription
+TimeData_dtype =  tables.Description(
+    TimeDataDescription().columns)._v_nestedDescr
+
 class StrokelitudeClass(traits.HasTraits):
     """plugin for fview.
 
@@ -405,8 +413,20 @@ class StrokelitudeClass(traits.HasTraits):
 
     def _save_to_disk_changed(self):
         if self.save_to_disk:
+            self.timestamp_modeler.block_activity = True
+
+            self.service_save_data() # flush buffers
+
             self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
             self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
+            self.stream_ain_table   = self.streaming_file.createTable(
+                self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
+                "AIN data",expectedrows=100000)
+            self.stream_time_data_table = self.streaming_file.createTable(
+                self.streaming_file.root,'time_data',TimeDataDescription,
+                "time data",expectedrows=1000)
+            self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
+
             self.stream_table   = self.streaming_file.createTable(
                 self.streaming_file.root,'stroke_data', StrokelitudeDataDescription,
                 "wingstroke data",expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
@@ -423,9 +443,12 @@ class StrokelitudeClass(traits.HasTraits):
             print 'saving to disk...'
         else:
             print 'closing file', repr(self.streaming_filename)
+            self.timestamp_modeler.block_activity = True
             # flush queue
             self.save_data_queue = Queue.Queue()
 
+            self.stream_ain_table   = None
+            self.stream_time_data_table = None
             self.stream_table   = None
             self.stream_plugin_tables = None
             self.plugin_table_dtypes = None
@@ -439,6 +462,8 @@ class StrokelitudeClass(traits.HasTraits):
         self.timestamp_modeler = None
         self.drawsegs_cache = None
         self.streaming_file = None
+        self.stream_ain_table   = None
+        self.stream_time_data_table = None
         self.stream_table   = None
         self.stream_plugin_tables = None
         self.plugin_table_dtypes = None
@@ -628,6 +653,20 @@ class StrokelitudeClass(traits.HasTraits):
                                     dtype=StrokelitudeDataCol_dtype)
             self.stream_table.append( recarray )
             self.stream_table.flush()
+
+        # analog input data...
+        buf = self.timestamp_modeler.pump_ain_wordstream_buffer()
+        if self.stream_ain_table is not None and buf is not None:
+            recarray = np.rec.array( [buf], dtype=AnalogInputWordstream_dtype)
+            self.stream_ain_table.append( recarray )
+            self.stream_ain_table.flush()
+
+        tsfs = self.timestamp_modeler.pump_timestamp_data()
+        if self.stream_time_data_table is not None and tsfs is not None:
+            timestamps,framestamps = tsfs
+            recarray = np.rec.array( [timestamps,framestamps], dtype=TimeData_dtype)
+            self.stream_time_data_table.append( recarray )
+            self.stream_time_data_table.flush()
 
         # plugin data...
         for name,queue in self.current_plugin_save_queues.iteritems():
