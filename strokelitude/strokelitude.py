@@ -412,10 +412,9 @@ class StrokelitudeClass(traits.HasTraits):
                 print 'should save new mask'
 
     def _save_to_disk_changed(self):
+        self.service_save_data(flush=True) # flush buffers
         if self.save_to_disk:
             self.timestamp_modeler.block_activity = True
-
-            self.service_save_data() # flush buffers
 
             self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
             self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
@@ -444,8 +443,7 @@ class StrokelitudeClass(traits.HasTraits):
 
             print 'saving to disk...'
         else:
-            print 'closing file', repr(self.streaming_filename)
-            self.timestamp_modeler.block_activity = True
+            print 'closing file...'
             # flush queue
             self.save_data_queue = Queue.Queue()
 
@@ -456,7 +454,9 @@ class StrokelitudeClass(traits.HasTraits):
             self.plugin_table_dtypes = None
             self.streaming_file.close()
             self.streaming_file = None
+            print 'closed',repr(self.streaming_filename)
             self.streaming_filename = ''
+            self.timestamp_modeler.block_activity = False
 
     def __init__(self,wx_parent,*args,**kwargs):
         super(StrokelitudeClass,self).__init__(*args,**kwargs)
@@ -640,7 +640,7 @@ class StrokelitudeClass(traits.HasTraits):
                 print('self.display_text_queue.get_nowait()',
                       self.display_text_queue.get_nowait())
 
-    def service_save_data(self):
+    def service_save_data(self,flush=False):
         # pump the queue
         list_of_rows_of_data = []
         try:
@@ -657,13 +657,13 @@ class StrokelitudeClass(traits.HasTraits):
             self.stream_table.flush()
 
         # analog input data...
-        buf = self.timestamp_modeler.pump_ain_wordstream_buffer()
+        buf = self.timestamp_modeler.pump_ain_wordstream_buffer(flush=flush)
         if self.stream_ain_table is not None and buf is not None:
             recarray = np.rec.array( [buf], dtype=AnalogInputWordstream_dtype)
             self.stream_ain_table.append( recarray )
             self.stream_ain_table.flush()
 
-        tsfs = self.timestamp_modeler.pump_timestamp_data()
+        tsfs = self.timestamp_modeler.pump_timestamp_data(flush=flush)
         if self.stream_time_data_table is not None and tsfs is not None:
             timestamps,framestamps = tsfs
             recarray = np.rec.array( [timestamps,framestamps], dtype=TimeData_dtype)
