@@ -112,6 +112,9 @@ class StateMachine(traits.HasTraits):
         self.last_time = now
 
         self.stripe_pos_degrees += vel_dps*dt
+        # put in range -180 <= angle < 180
+        self.stripe_pos_degrees = (self.stripe_pos_degrees+180)%360-180
+
         return self.stripe_pos_degrees, vel_dps
 
 class StripeControlRemoteProcess:
@@ -274,8 +277,7 @@ class StripeClassWorker(StripeClass):
         self.arr.fill( 255 ) # turn all pixels white
 
         # compute columns of stripe
-        self.stripe_pos_radians = \
-                                ((180-self.stripe_pos_degrees)*D2R) % (2*np.pi)
+        self.stripe_pos_radians = self.stripe_pos_degrees*D2R
         pix_center = self.stripe_pos_radians/(2*np.pi)*(self.compute_width*8)
         pix_width = 4
         pix_start = int(pix_center-pix_width/2.0)
