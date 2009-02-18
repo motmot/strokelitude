@@ -5,9 +5,15 @@ import data_format # strokelitude
 
 import motmot.utils.config
 import motmot.FastImage.FastImage as FastImage
+import motmot.fview.traited_plugin as traited_plugin
+
+# Weird bugs arise in class identity testing if this is not absolute
+#   import...  ... but Python won't let me import it as absolute. Ahh,
+#   well, workaround the bug by setting selectable on InstanceEditor
+#   directly.
+import plugin as strokelitude_plugin_module
 
 import wx
-import wx.xrc as xrc
 import warnings, time, threading
 
 import numpy as np
@@ -19,12 +25,13 @@ import tables # pytables
 
 import enthought.traits.api as traits
 from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
-     VGroup, RangeEditor
+     VGroup, RangeEditor, InstanceEditor, ButtonEditor
 
 from enthought.enable.api import Component, Container
 from enthought.enable.wx_backend.api import Window
 from enthought.chaco.api import DataView, ArrayDataSource, ScatterPlot, \
      LinePlot, LinearMapper, ArrayPlotData, Plot, gray
+from enthought.enable.component_editor import ComponentEditor
 import enthought.chaco.default_colormaps as default_colormaps
 from enthought.chaco.data_range_1d import DataRange1D
 from enthought.chaco.api import create_line_plot, add_default_axes, \
@@ -33,11 +40,6 @@ from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
      ImageInspectorOverlay
 import fview_ext_trig.live_timestamp_modeler as modeler_module
-
-# trigger extraction
-RESFILE = pkg_resources.resource_filename(__name__,"strokelitude.xrc")
-RES = xrc.EmptyXmlResource()
-RES.LoadFromString(open(RESFILE).read())
 
 DataReadyEvent = wx.NewEventType()
 BGReadyEvent = wx.NewEventType()
@@ -118,6 +120,9 @@ class MaskData(traits.HasTraits):
         'rotation','translation','view_from_below',
         ])
 
+    mean_quad_angles_deg = traits.Property(depends_on=[
+        'alpha', 'beta', 'nbins'])
+
     quads_right = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
         'rotation','translation','view_from_below',
@@ -190,6 +195,12 @@ class MaskData(traits.HasTraits):
     @traits.cached_property
     def _get_quads_right(self):
         return self.get_quads('right')
+
+    @traits.cached_property
+    def _get_mean_quad_angles_deg(self):
+        x = np.linspace(self.alpha,self.beta,self.nbins+1)
+        av = (x[:-1]+x[1:])*0.5 # local means
+        return av
 
     def get_extra_linesegs(self):
         """return linesegments that contextualize parameters"""
@@ -365,14 +376,64 @@ TimeDataDescription = data_format.TimeDataDescription
 TimeData_dtype =  tables.Description(
     TimeDataDescription().columns)._v_nestedDescr
 
-class StrokelitudeClass(traits.HasTraits):
-    """plugin for fview.
+class LiveDataPlot(traits.HasTraits):
+    left_plot = traits.Instance(Plot)
+    right_plot = traits.Instance(Plot)
+    traits_view = View(Group(
+                             Item('left_plot',
+                                  editor=ComponentEditor(),
+                                  height=300,
+                                  width=500,
+                                  show_label=False,
+                                  ),
+                             Item('right_plot',
+                                  editor=ComponentEditor(),
+                                  height=300,
+                                  width=500,
+                                  show_label=False,
+                                  ),
+                             ),
+                             title='live data plot',
+                       )
 
-    Because this class implements everything necessary to be a valid
-    fview plugin, some of the methods here are necessary.
-    """
+class PopUpPlot(traits.HasTraits):
+    plot = traits.Instance(Plot)
+    traits_view = View(Group(
+                             Item('plot',
+                                  editor=ComponentEditor(),
+                                  height=300,
+                                  width=500,
+                                  show_label=False,
+                                  ),
+                             ),
+                             title='plot',
+                       )
+
+class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
+    plugin_name = traits.Str('-=| strokelitude |=-')
+
+    # the meta-class, contains startup() and shutdown:
+    current_stimulus_plugin = traits.Instance(strokelitude_plugin_module.PluginInfoBase)
+    avail_stim_plugins = traits.List(strokelitude_plugin_module.PluginInfoBase)
+
+    # the proxy for the real plugin:
+    hastraits_proxy = traits.Instance(traits.HasTraits)
+    hastraits_ui = traits.Instance(traits.HasTraits)
+    edit_stimulus = traits.Button
+
     mask_dirty = traits.Bool(False) # let __init__ set True
     maskdata = traits.Instance(MaskData)
+
+    recompute_mask = traits.Event
+    take_bg = traits.Event
+    clear_bg = traits.Event
+
+    background_viewer = traits.Instance(PopUpPlot)
+    live_data_viewer = traits.Instance(LiveDataPlot)
+
+    processing_enabled = traits.Bool(False)
+
+    draw_mask = traits.Bool
 
     latency_msec = traits.Float()
     threshold_fraction = traits.Float(0.5)
@@ -382,11 +443,34 @@ class StrokelitudeClass(traits.HasTraits):
     timestamp_modeler = traits.Instance(
         modeler_module.LiveTimestampModelerWithAnalogInput )
 
+    live_data_plot = traits.Instance(LiveDataPlot)
+
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
                                     ),
-                               #Item(name='timestamp_modeler'),
+                               Group(
+                               Item('current_stimulus_plugin',
+                                    show_label=False,
+                                    editor=InstanceEditor(
+        name = 'avail_stim_plugins',
+        selectable=True,
+        editable = False),
+                                    style='custom'),
+                               Item('edit_stimulus',show_label=False),
+                               orientation='horizontal'),
+                               Item('recompute_mask',
+                                    editor=ButtonEditor(),show_label=False),
+                               Item('processing_enabled'),
+                               Item('draw_mask'),
+                               Item('take_bg',
+                                    editor=ButtonEditor(),show_label=False),
+                               Item('clear_bg',
+                                    editor=ButtonEditor(),show_label=False),
+                               Item('background_viewer',show_label=False),
+                               Item('live_data_viewer',show_label=False),
+                               Item('maskdata',show_label=False),
+                               Item('live_data_plot',show_label=False),
                                Item(name='threshold_fraction',
                                     ),
                                Item(name='light_on_dark',
@@ -397,70 +481,11 @@ class StrokelitudeClass(traits.HasTraits):
                                     style='readonly'),
                                ))
 
-    def _mask_dirty_changed(self):
-        if not hasattr(self,'enabled_box'):
-            # not initialized yet...
-            return
-        if self.mask_dirty:
-            self.enabled_box.SetValue(False)
-            self.enabled_box.Enable(False)
-            self.recompute_mask_button.Enable(True)
-        else:
-            self.enabled_box.Enable(True)
-            self.recompute_mask_button.Enable(False)
-            if self.save_to_disk:
-                print 'should save new mask'
+    def __init__(self,*args,**kw):
+        print 'init called',args,kw
+        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,600))
+        super(StrokelitudeClass,self).__init__(*args,**kw)
 
-    def _save_to_disk_changed(self):
-        self.service_save_data(flush=True) # flush buffers
-        if self.save_to_disk:
-            self.timestamp_modeler.block_activity = True
-
-            self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
-            self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
-            self.stream_ain_table   = self.streaming_file.createTable(
-                self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
-                "AIN data",expectedrows=100000)
-            self.stream_ain_table.attrs.channel_names = self.timestamp_modeler.channel_names
-
-            self.stream_time_data_table = self.streaming_file.createTable(
-                self.streaming_file.root,'time_data',TimeDataDescription,
-                "time data",expectedrows=1000)
-            self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
-
-            self.stream_table   = self.streaming_file.createTable(
-                self.streaming_file.root,'stroke_data', StrokelitudeDataDescription,
-                "wingstroke data",expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
-
-            self.stream_plugin_tables = {}
-            self.plugin_table_dtypes = {}
-            for name, description in self.current_plugin_descr_dict.iteritems():
-                self.stream_plugin_tables[name] = self.streaming_file.createTable(
-                    self.streaming_file.root, name, description,
-                    name,expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
-                self.plugin_table_dtypes[name] = tables.Description(
-                    description().columns)._v_nestedDescr
-
-            print 'saving to disk...'
-        else:
-            print 'closing file...'
-            # flush queue
-            self.save_data_queue = Queue.Queue()
-
-            self.stream_ain_table   = None
-            self.stream_time_data_table = None
-            self.stream_table   = None
-            self.stream_plugin_tables = None
-            self.plugin_table_dtypes = None
-            self.streaming_file.close()
-            self.streaming_file = None
-            print 'closed',repr(self.streaming_filename)
-            self.streaming_filename = ''
-            self.timestamp_modeler.block_activity = False
-
-    def __init__(self,wx_parent,*args,**kwargs):
-        super(StrokelitudeClass,self).__init__(*args,**kwargs)
-        self.wx_parent = wx_parent
         self.timestamp_modeler = None
         self.drawsegs_cache = None
         self.streaming_file = None
@@ -472,8 +497,6 @@ class StrokelitudeClass(traits.HasTraits):
         self.current_plugin_descr_dict = {}
         self.display_text_queue = None
 
-        self.frame = RES.LoadFrame(wx_parent,"FVIEW_STROKELITUDE_FRAME")
-        self.draw_mask_ctrl = xrc.XRCCTRL(self.frame,'DRAW_MASK_REGION')
         # load maskdata from file
         self.pkl_fname = motmot.utils.config.rc_fname(
             must_already_exist=False,
@@ -498,70 +521,50 @@ class StrokelitudeClass(traits.HasTraits):
         self.new_bg_image = None
 
         self.recomputing_lock = threading.Lock()
-        self.current_plugin_name = None # nothing loaded
+        # for passing data to the pluging
         self.current_plugin_queue = None
+        # for saving data:
         self.current_plugin_save_queues = {} # replaced later
+
+        self.background_viewer = PopUpPlot()
+        self.live_data_plot = LiveDataPlot()
 
         if 1:
             # load plugins
-            self.plugins = load_plugins()
-            self.name2plugin=dict( [(p.get_name(),p) for p in self.plugins])
-            choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
-            plugin_names = self.name2plugin.keys()
-            for plugin_name in plugin_names:
-                choice.Append( plugin_name )
-            if len(plugin_names):
-                choice.SetSelection(0)
-            wx.EVT_CHOICE(choice, choice.GetId(), self.OnChoosePlugin)
-            time.sleep(0.2) # give a bit of time for Pyro server to start...
-            self.OnChoosePlugin(None)
-
-            ## if len(self.plugins)>1:
-            ##     warnings.warn('currently only support for max 1 plugin')
-            ##     del self.plugins[1:]
-
+            plugins = load_plugins()
+            for p in plugins:
+                self.avail_stim_plugins.append(p)
+            if len(self.avail_stim_plugins):
+                self.current_stimulus_plugin = self.avail_stim_plugins[0]
             self.quit_plugin_event = threading.Event()
 
         if 1:
-            # setup maskdata parameter panel
-            panel = xrc.XRCCTRL(self.frame,'MASKDATA_PARAMS_PANEL')
-            sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-            control = self.maskdata.edit_traits( parent=panel,
-                                                 kind='subpanel',
-                                                 ).control
-            sizer.Add(control, 1, wx.EXPAND)
-            panel.SetSizer( sizer )
-            control.GetParent().SetMinSize(control.GetMinSize())
-
+            self.live_pd = {}
             for side in ['left','right']:
 
-                x=np.arange(self.maskdata.nbins,dtype=np.float64)
+                x=self.maskdata.mean_quad_angles_deg
                 y=np.zeros_like(x)
-                plot = create_line_plot((x,y), color="red", width=2.0,
-                                        border_visible=True,
-                                        #add_axis=True,
-                                        )
-                value_range = plot.value_mapper.range
-                index_range = plot.index_mapper.range
 
-                plot.padding = 10
-                plot.bgcolor = "white"
+                pd=ArrayPlotData(index=x)
+                pd.set_data('live',y)
+                pd.set_data('bg',np.zeros_like(x))
+                self.live_pd[side]=pd
+                plot = Plot(pd, title=side,
+                            padding=50,
+                            border_visible=True,
+                            overlay_border=True)
+                plot.legend.visible = True
+                plot.plot(("index", 'live'), name=side, color="red")
+                plot.plot(("index", "bg"), name="background", color="blue")
 
                 if side=='left':
                     self.left_plot=plot
+                    self.live_data_plot.left_plot=plot
                 elif side=='right':
                     self.right_plot=plot
+                    self.live_data_plot.right_plot=plot
+            del plot,x,y,pd # don't let these escape and pollute namespace
 
-                component = plot
-
-                panel = xrc.XRCCTRL(self.frame,side.upper()+'_LIVEVIEW_PANEL')
-                sizer = wx.BoxSizer(wx.HORIZONTAL)
-                enable_window = Window( panel, -1, component = component )
-                control = enable_window.control
-                sizer.Add(control, 1, wx.EXPAND)
-                panel.SetSizer( sizer )
-                #control.GetParent().SetMinSize(control.GetMinSize())
         if 1:
             # a temporary initial background image
             image = np.zeros((640,480), dtype=np.uint8)
@@ -571,58 +574,24 @@ class StrokelitudeClass(traits.HasTraits):
             self.bg_pd.set_data("imagedata", image)
 
             # Create the plot
-            plot = Plot(self.bg_pd, default_origin="top left")
-            self.bg_plot = plot
-            plot.x_axis.orientation = "top"
+            self.bg_plot = Plot(self.bg_pd, default_origin="top left")
+            self.bg_plot.x_axis.orientation = "top"
             colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
-            plot.img_plot("imagedata",colormap=colormap)[0]
+            self.bg_plot.img_plot("imagedata",colormap=colormap)[0]
 
-            plot.padding = 30
-            plot.bgcolor = "white"
+            self.bg_plot.padding = 30
+            self.bg_plot.bgcolor = "white"
 
             # Attach some tools to the plot
-            plot.tools.append(PanTool(plot, constrain_key="shift"))
-            plot.overlays.append(ZoomTool(component=plot,
-                                            tool_mode="box", always_on=False))
+            self.bg_plot.tools.append(PanTool(self.bg_plot,
+                                              constrain_key="shift"))
+            self.bg_plot.overlays.append(ZoomTool(component=self.bg_plot,
+                                          tool_mode="box", always_on=False))
 
-            component = plot
-
-            panel = xrc.XRCCTRL(self.frame,'BACKGROUND_IMAGE_PANEL')
-            sizer = wx.BoxSizer(wx.HORIZONTAL)
-            self.bg_window = Window( panel, -1, component = component )
-            control = self.bg_window.control
-            sizer.Add(control, 1, wx.EXPAND)
-            panel.SetSizer( sizer )
-
-        if 1:
-            # latency show panel
-            panel = xrc.XRCCTRL(self.frame,'LATENCY_SHOW_PANEL')
-            sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-            control = self.edit_traits( parent=panel,
-                                        kind='subpanel',
-                                        ).control
-            sizer.Add(control, 1, wx.EXPAND)
-            panel.SetSizer( sizer )
-            control.GetParent().SetMinSize(control.GetMinSize())
-
+            self.background_viewer.plot = self.bg_plot
         self.cam_id = None
         self.width = 20
         self.height = 10
-
-        self.frame.Fit()
-
-        self.recompute_mask_button = xrc.XRCCTRL(self.frame,'RECOMPUTE_MASK')
-        wx.EVT_BUTTON(self.recompute_mask_button,
-                      self.recompute_mask_button.GetId(),
-                      self.recompute_mask)
-
-        ctrl = xrc.XRCCTRL(self.frame,'TAKE_BG_BUTTON')
-        wx.EVT_BUTTON(ctrl, ctrl.GetId(), self.OnTakeBg)
-        ctrl = xrc.XRCCTRL(self.frame,'CLEAR_BG_BUTTON')
-        wx.EVT_BUTTON(ctrl, ctrl.GetId(), self.OnClearBg)
-
-        self.enabled_box = xrc.XRCCTRL(self.frame,'ENABLE_PROCESSING')
 
         self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
         self.frame.Connect( -1, -1, BGReadyEvent, self.OnNewBGReady )
@@ -687,51 +656,93 @@ class StrokelitudeClass(traits.HasTraits):
                 table.append(recarray)
                 table.flush()
 
-    def OnChoosePlugin(self,event):
+    def _mask_dirty_changed(self):
+        if self.mask_dirty:
+            self.processing_enabled = False
+
+    def _save_to_disk_changed(self):
+        self.service_save_data(flush=True) # flush buffers
         if self.save_to_disk:
-            raise RuntimeError('cannot choose plugin while saving to disk')
+            self.timestamp_modeler.block_activity = True
 
-        choice = xrc.XRCCTRL(self.frame,'PLUGIN_CHOICE')
-        name = choice.GetStringSelection()
-        if name == '':
-            name = None
+            self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
+            self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
+            self.stream_ain_table   = self.streaming_file.createTable(
+                self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
+                "AIN data",expectedrows=100000)
+            self.stream_ain_table.attrs.channel_names = self.timestamp_modeler.channel_names
 
-        if self.current_plugin_name == name:
-            return
+            self.stream_time_data_table = self.streaming_file.createTable(
+                self.streaming_file.root,'time_data',TimeDataDescription,
+                "time data",expectedrows=1000)
+            self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
 
-        if self.current_plugin_name is not None:
+            self.stream_table   = self.streaming_file.createTable(
+                self.streaming_file.root,'stroke_data', StrokelitudeDataDescription,
+                "wingstroke data",expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
+
+            self.stream_plugin_tables = {}
+            self.plugin_table_dtypes = {}
+            for name, description in self.current_plugin_descr_dict.iteritems():
+                self.stream_plugin_tables[name] = self.streaming_file.createTable(
+                    self.streaming_file.root, name, description,
+                    name,expectedrows=50*60*10) # 50 Hz * 60 seconds * 10 minutes
+                self.plugin_table_dtypes[name] = tables.Description(
+                    description().columns)._v_nestedDescr
+
+            print 'saving to disk...'
+        else:
+            print 'closing file...'
+            # flush queue
+            self.save_data_queue = Queue.Queue()
+
+            self.stream_ain_table   = None
+            self.stream_time_data_table = None
+            self.stream_table   = None
+            self.stream_plugin_tables = None
+            self.plugin_table_dtypes = None
+            self.streaming_file.close()
+            self.streaming_file = None
+            print 'closed',repr(self.streaming_filename)
+            self.streaming_filename = ''
+            self.timestamp_modeler.block_activity = False
+
+    def _edit_stimulus_fired(self):
+        if self.current_stimulus_plugin is not None:
+            self.hastraits_ui = self.hastraits_proxy.edit_traits()
+
+    # handler for change of self.current_stimulus_plugin
+    def _current_stimulus_plugin_changed(self,trait_name,old_value,new_value):
+        print 'trait_name,old_value,new_value',trait_name,old_value,new_value
+
+        print 'calling _current_stimulus_plugin_changed...'
+        if self.save_to_disk:
+            print 'ERROR: chose plugin while saving to disk'
+
+        if self.hastraits_ui is not None:
+            print 'do not know how to close old window!!'
+            #self.hastraits_ui.close()
+
+        if old_value is not None:
             # shutdown old plugin
-            self.name2plugin[self.current_plugin_name].shutdown()
+            old_value.shutdown()
             self.current_plugin_queue = None
 
-        panel = xrc.XRCCTRL(self.frame,'PLUGIN_PANEL')
-        panel.DestroyChildren()
+        assert new_value is self.current_stimulus_plugin
 
         # startup new plugin
 
-        plugin = self.name2plugin[name]
-        (hastraits_proxy, self.current_plugin_queue,
+        print 'calling startup()'
+        (self.hastraits_proxy, self.current_plugin_queue,
          self.current_plugin_save_queues,
          self.current_plugin_descr_dict,
-         self.display_text_queue) = plugin.startup()
+         self.display_text_queue) = self.current_stimulus_plugin.startup()
+        self.hastraits_ui = None
 
-        # add to display
+        print '...done _current_stimulus_plugin_changed'
 
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
-        if 1:
-            control = hastraits_proxy.edit_traits( parent=panel,
-                                                   kind='subpanel',
-                                                   ).control
-            #control.GetParent().SetMinSize(control.GetMinSize())
-        else:
-            control = wx.StaticText(panel,-1,'t=%s'%time.time())
-        sizer.Add(control, 1, wx.EXPAND)
-        panel.SetSizer( sizer )
-        panel.Layout()
-
-        self.current_plugin_name = name
-
-    def recompute_mask(self,event):
+    def _recompute_mask_fired(self):
+        print 'recomputing mask'
         with self.recomputing_lock:
             count = 0
 
@@ -757,24 +768,25 @@ class StrokelitudeClass(traits.HasTraits):
                 count+=1
 
             bg = FastImage.asfastimage(self.bg_image)
+            print 'self.bg_image[:10,:10]'
+            print self.bg_image[:10,:10]
             self.bg_left_vec = compute_sparse_mult(self.left_mat,bg)
             self.bg_right_vec= compute_sparse_mult(self.right_mat,bg)
+
+            self.live_pd['left'].set_data('bg',self.bg_left_vec)
+            self.live_pd['right'].set_data('bg',self.bg_right_vec)
+            #self.left_plot.request_redraw()
+            #self.right_plot.request_redraw()
+
+            print self.bg_left_vec
 
             self.mask_dirty=False
 
     def on_mask_change(self):
         self.mask_dirty=True
 
-    def get_frame(self):
-        """return wxPython frame widget"""
-        return self.frame
-
     def get_buffer_allocator(self,cam_id):
         return BufferAllocator()
-
-    def get_plugin_name(self):
-        return 'Stroke Amplitude'
-
     def process_frame(self,cam_id,buf,buf_offset,timestamp,framenumber):
         """do work on each frame
 
@@ -799,7 +811,7 @@ class StrokelitudeClass(traits.HasTraits):
             return draw_points, draw_linesegs
 
         try:
-            if self.draw_mask_ctrl.IsChecked():
+            if self.draw_mask:
                 # XXX this is naughty -- it's not threasafe.
                 # concatenate lists
                 extra = self.maskdata.all_linesegs
@@ -829,12 +841,11 @@ class StrokelitudeClass(traits.HasTraits):
                 event = wx.CommandEvent(BGReadyEvent)
                 event.SetEventObject(self.frame)
 
-                # trigger call to self.OnDataReady
+                # trigger call to self.OnNewBGReady
                 wx.PostEvent(self.frame, event)
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
-            if (self.enabled_box.GetValue() and
-                not self.mask_dirty):
+            if (self.processing_enabled and not self.mask_dirty):
                 if 1:
                     self.drawsegs_cache = []
 
@@ -919,7 +930,9 @@ class StrokelitudeClass(traits.HasTraits):
                     ##     queue.put( (cam_id,timestamp,framenumber,results) )
 
                     # send values from each quad to be drawn
-                    self.vals_queue.put( (left_vals, right_vals) )
+                    self.vals_queue.put((left_vals, right_vals,
+                                         left_angle_degrees,right_angle_degrees,
+                                         ))
                     event = wx.CommandEvent(DataReadyEvent)
                     event.SetEventObject(self.frame)
 
@@ -940,11 +953,11 @@ class StrokelitudeClass(traits.HasTraits):
 
         return draw_points, draw_linesegs
 
-    def OnTakeBg(self,event):
+    def _take_bg_fired(self):
         self.mask_dirty = True
         self.bg_cmd_queue.put('take')
 
-    def OnClearBg(self,event):
+    def _clear_bg_fired(self):
         self.mask_dirty = True
         self.bg_cmd_queue.put('clear')
 
@@ -956,10 +969,12 @@ class StrokelitudeClass(traits.HasTraits):
             print 'should save BG image to disk'
         self.bg_pd.set_data("imagedata", new_bg_image)
         self.bg_plot.request_redraw()
+        # we have not yet done the sparse multiplication yet
 
     def OnDataReady(self, event):
         lrvals = None
         while 1:
+            # We only care about most recent results. Discard older data.
             try:
                 lrvals = self.vals_queue.get_nowait()
             except Queue.Empty:
@@ -967,30 +982,9 @@ class StrokelitudeClass(traits.HasTraits):
         if lrvals is None:
             return
 
-        left_vals, right_vals = lrvals
-        self.left_plot.value.set_data(left_vals)
-        self.right_plot.value.set_data(right_vals)
-
-    def set_view_flip_LR( self, val ):
-        pass
-
-    def set_view_rotate_180( self, val ):
-        pass
-
-    def quit(self):
-        # save current maskdata
-        pickle.dump(self.maskdata,open(self.pkl_fname,mode='w'))
-
-        if self.current_plugin_name is None:
-            return
-
-        plugin = self.name2plugin[self.current_plugin_name]
-        plugin.shutdown()
-
-    def set_all_fview_plugins(self,plugins):
-        for plugin in plugins:
-            if plugin.get_plugin_name()=='FView external trigger':
-                self.timestamp_modeler = plugin.timestamp_modeler
+        left_vals, right_vals,left_angle_degrees,right_angle_degrees = lrvals
+        self.live_pd['left'].set_data('live',left_vals)
+        self.live_pd['right'].set_data('live',right_vals)
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
@@ -1008,20 +1002,32 @@ class StrokelitudeClass(traits.HasTraits):
         with self.recomputing_lock:
             self.bg_image = np.zeros( (self.height,self.width), dtype=np.uint8 )
 
-        self.OnClearBg(None)
-        ## self.bg_image = np.zeros( (max_height, max_width),
-        ##                           dtype=np.uint8)
+        #self.OnClearBg(None)
 
     def offline_startup_func(self,arg):
         """gets called by fview_replay_fmf"""
 
         # automatically recompute mask and enable processing in offline mode
-        self.recompute_mask(None)
+        self.recompute_mask = True # fire event
         assert self.mask_dirty==False
-        self.enabled_box.SetValue(True)
+        self.processing_enabled = True
+
+    def set_all_fview_plugins(self,plugins):
+        print 'set_all_fview_plugins called'
+        for plugin in plugins:
+            print '  ', plugin.get_plugin_name()
+
+            if plugin.get_plugin_name()=='FView external trigger':
+                self.timestamp_modeler = plugin.timestamp_modeler
+        print
+
+    def quit(self):
+        # save current maskdata
+        pickle.dump(self.maskdata,open(self.pkl_fname,mode='w'))
+
+        if self.current_stimulus_plugin is not None:
+            self.current_stimulus_plugin.shutdown()
 
 if __name__=='__main__':
-
     data = MaskData()
     data.configure_traits()
-

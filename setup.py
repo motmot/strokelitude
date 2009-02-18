@@ -11,5 +11,4 @@ setup(name='strokelitude',
       author='Andrew Straw',
       author_email='strawman@astraw.com',
       zip_safe=True,
-      package_data = {'strokelitude':['strokelitude.xrc']},
       )

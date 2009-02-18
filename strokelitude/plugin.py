@@ -2,6 +2,7 @@ import os, sys, random
 import multiprocessing
 import remote_traits
 import warnings
+import enthought.traits.api as traits
 
 def mainloop(klass_proxy,klass_worker,
              hostname,port,obj_name,data_queue,save_data_queues,
@@ -47,23 +48,26 @@ def mainloop(klass_proxy,klass_worker,
         instance_worker.do_work()
     #print 'process %r is shutting down'%multiprocessing.current_process()
 
-class PluginBase(object):
+class PluginInfoBase(traits.HasTraits):
     """abstract base class to create plugins for strokelitude GUI"""
+    name = traits.Str('generic strokelitude plugin')
 
     def __init__(self):
         self.quit_event = multiprocessing.Event()
         self.child = None
         self.server = None
 
-    def get_name(self):
-        raise NotImplementedError('must be overriden by derived class')
     def get_hastraits_class(self):
         raise NotImplementedError('must be overriden by derived class')
 
     def shutdown(self):
         self.quit_event.set()
         if self.child is not None:
+            print 'joining child...'
+            print '  self.child',self.child
+            print '  self.child.join',self.child.join
             self.child.join()
+            print '...done joining child'
             self.child = None
         if self.server is not None:
             self.server = None # close
