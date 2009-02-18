@@ -674,7 +674,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
             self.stream_time_data_table = self.streaming_file.createTable(
                 self.streaming_file.root,'time_data',TimeDataDescription,
-                "time data",expectedrows=1000)
+                "time data",expectedrows=10000)
             self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
 
             self.stream_table   = self.streaming_file.createTable(
