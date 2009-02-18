@@ -12,7 +12,9 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 
 import remote_traits
-import strokelitude.plugin
+
+# weird bugs arise in class identity testing if this is not absolute import:
+import strokelitude.plugin as strokelitude_plugin_module
 import multiprocessing
 import multiprocessing.queues
 
@@ -157,10 +159,10 @@ def stripe_control_runner(experiment_file,
         to_state_machine,from_state_machine,display_text_queue)
     execfile(experiment_file)
 
-class StripePluginInfo(strokelitude.plugin.PluginBase):
+class ExperimentRunnerPluginInfo(strokelitude_plugin_module.PluginInfoBase):
     """called by strokelitude.plugin"""
-    def get_name(self):
-        return 'Stripe Experiment Runner'
+    name = traits.Str('Stripe Experiment Runner')
+
     def get_hastraits_class(self):
         return StripeClass, StripeClassWorker
     def get_worker_table_descriptions(self):

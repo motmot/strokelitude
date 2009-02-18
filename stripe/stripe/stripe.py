@@ -12,14 +12,14 @@ from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
      VGroup, RangeEditor
 
 import remote_traits
-import strokelitude.plugin
+# weird bugs arise in class identity testing if this is not absolute import:
+import strokelitude.plugin as strokelitude_plugin_module
 
 R2D = 180.0/np.pi
 D2R = np.pi/180.0
 
-class StripePluginInfo(strokelitude.plugin.PluginBase):
-    def get_name(self):
-        return 'Closed Loop Stripe Fixation'
+class StripePluginInfo(strokelitude_plugin_module.PluginInfoBase):
+    name = traits.Str('Closed Loop Stripe Fixation')
     def get_hastraits_class(self):
         return StripeClass, StripeClassWorker
 
