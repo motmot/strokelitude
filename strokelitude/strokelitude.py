@@ -39,7 +39,7 @@ from enthought.chaco.api import create_line_plot, add_default_axes, \
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
      ImageInspectorOverlay
-import fview_ext_trig.live_timestamp_modeler as modeler_module
+import motmot.fview_ext_trig.live_timestamp_modeler as modeler_module
 
 DataReadyEvent = wx.NewEventType()
 BGReadyEvent = wx.NewEventType()
@@ -270,7 +270,7 @@ class MaskData(traits.HasTraits):
         all_theta_user_coords = np.linspace(alpha,beta,self.nbins+1)
 
         # convert to drawing coord system
-        all_theta = 90*D2R - all_theta_user_coords # make 
+        all_theta = 90*D2R - all_theta_user_coords # make
         all_theta *= sign
 
         linesegs = []
