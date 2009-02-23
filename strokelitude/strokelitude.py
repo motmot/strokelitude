@@ -100,8 +100,8 @@ class MaskData(traits.HasTraits):
     r2 = traits.Range(0.0, 656.0, 22.0, mode='slider', set_enter=True)
 
     # angles, in degrees
-    alpha = traits.Range(0.0, 180.0, 14.0, mode='slider', set_enter=True)
-    beta = traits.Range(0.0, 180.0, 87.0, mode='slider', set_enter=True)
+    alpha = traits.Range(-90.0, 90.0, 87.0, mode='slider', set_enter=True)
+    beta = traits.Range(-90.0, 90.0, 14.0, mode='slider', set_enter=True)
     gamma = traits.Range(0.0, 360.0, 206.0, mode='slider', set_enter=True)
 
     # number of angular bins
@@ -265,7 +265,13 @@ class MaskData(traits.HasTraits):
         beta = self.beta*D2R
 
         sign = mult_sign[self.view_from_below][side]
-        all_theta = sign*np.linspace(alpha,beta,self.nbins+1)
+
+        # ordered from front to back, zero straight out from fly, positive towards head
+        all_theta_user_coords = np.linspace(alpha,beta,self.nbins+1)
+
+        # convert to drawing coord system
+        all_theta = 90*D2R - all_theta_user_coords # make 
+        all_theta *= sign
 
         linesegs = []
         for i in range(self.nbins):
@@ -289,14 +295,16 @@ class MaskData(traits.HasTraits):
         """convert index to angle (in radians)"""
         alpha = self.alpha*D2R
         beta = self.beta*D2R
+
         frac = idx/self.nbins
         diff = beta-alpha
         return alpha+frac*diff
 
-    def get_span_lineseg(self,side,theta):
-        """draw line on side at angle theta (in radians)"""
+    def get_span_lineseg(self,side,theta_user):
+        """draw line on side at angle theta_user (in radians)"""
         linesegs = []
         sign = mult_sign[self.view_from_below][side]
+        theta = 90*D2R - theta_user
         theta *= sign
 
         verts = np.array( [[ 0, 1000.0*np.cos(theta)],
@@ -378,9 +386,12 @@ TimeData_dtype =  tables.Description(
     TimeDataDescription().columns)._v_nestedDescr
 
 class LiveDataPlot(traits.HasTraits):
+    left_angle = traits.Float
+    right_angle = traits.Float
     left_plot = traits.Instance(Plot)
     right_plot = traits.Instance(Plot)
-    traits_view = View(Group(
+    traits_view = View(Group(Item('left_angle',style='readonly'),
+                             Item('right_angle',style='readonly'),
                              Item('left_plot',
                                   editor=ComponentEditor(),
                                   height=300,
@@ -988,6 +999,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         left_vals, right_vals,left_angle_degrees,right_angle_degrees = lrvals
         self.live_pd['left'].set_data('live',left_vals)
         self.live_pd['right'].set_data('live',right_vals)
+        self.live_data_plot.left_angle = left_angle_degrees
+        self.live_data_plot.right_angle = right_angle_degrees
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
