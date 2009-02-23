@@ -36,8 +36,9 @@ class StripeClassWorker(StripeClass):
         super(StripeClassWorker,self).__init__()
         self.display_text_queue=display_text_queue
         self.panel_height=4
-        self.panel_width=11
-        self.compute_width=12
+        self.panel_width=11 # number of actual panels
+        self.compute_width=12 # number of panels to complete a full circles
+        self.zero_column = 44 # column number of straight ahead
         self.stripe_pos_degrees = 0.0
         self.last_time = time.time()
         self.arr = np.zeros( (self.panel_height*8, self.panel_width*8),
@@ -98,7 +99,7 @@ class StripeClassWorker(StripeClass):
 
         # compute columns of stripe
         stripe_pos_radians = self.stripe_pos_degrees*D2R
-        pix_center = stripe_pos_radians/(2*np.pi)*(self.compute_width*8)
+        pix_center = self.zero_column-(stripe_pos_radians/(2*np.pi)*(self.compute_width*8))
         pix_width = 4
         pix_start = int(pix_center-pix_width/2.0)
         pix_stop = pix_start+pix_width
@@ -106,6 +107,7 @@ class StripeClassWorker(StripeClass):
         pix_start = pix_start % (self.compute_width*8)
         pix_stop = pix_stop % (self.compute_width*8)
 
+        # XXX there is some funkiness here
         if pix_start >= self.arr.shape[1]:
             pix_start = self.arr.shape[1]-1
         if pix_stop >= self.arr.shape[1]:
@@ -164,8 +166,6 @@ def mainloop_server():
 
 def mainloop():
     stripe_worker = StripeClassWorker()
-    desired_rate = 500.0 #hz
-    dt = 1.0/desired_rate
     while 1: # run forever
         stripe_worker.do_work()
 

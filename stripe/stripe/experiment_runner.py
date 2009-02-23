@@ -34,7 +34,7 @@ class StateMachine(traits.HasTraits):
         self.to_state_machine = to_state_machine
         self.from_state_machine = from_state_machine
 
-        self.gain = -900.0
+        self.gain = -40.0
         self.offset = 0.0
 
         self.stripe_pos_degrees = 0.0
@@ -195,8 +195,9 @@ class StripeClassWorker(StripeClass):
             self.panel_device = None
 
         self.panel_height=4
-        self.panel_width=11
-        self.compute_width=12
+        self.panel_width=11 # number of actual panels
+        self.compute_width=12 # number of panels to complete a full circles
+        self.zero_column = 44 # column number of straight ahead
         self.stripe_pos_degrees = 0.0
         self.vel_dps = 0.0
         self.last_frame = 0
@@ -279,8 +280,8 @@ class StripeClassWorker(StripeClass):
         self.arr.fill( 255 ) # turn all pixels white
 
         # compute columns of stripe
-        self.stripe_pos_radians = self.stripe_pos_degrees*D2R
-        pix_center = self.stripe_pos_radians/(2*np.pi)*(self.compute_width*8)
+        stripe_pos_radians = self.stripe_pos_degrees*D2R
+        pix_center = self.zero_column-(stripe_pos_radians/(2*np.pi)*(self.compute_width*8))
         pix_width = 4
         pix_start = int(pix_center-pix_width/2.0)
         pix_stop = pix_start+pix_width
@@ -288,6 +289,7 @@ class StripeClassWorker(StripeClass):
         pix_start = pix_start % (self.compute_width*8)
         pix_stop = pix_stop % (self.compute_width*8)
 
+        # XXX there is some funkiness here
         if pix_start >= self.arr.shape[1]:
             pix_start = self.arr.shape[1]-1
         if pix_stop >= self.arr.shape[1]:
