@@ -182,6 +182,7 @@ class MaskData(traits.HasTraits):
                                  ),
                                ),
                         title = 'Mask Parameters',
+                        resizable = True,
                         )
 
     @traits.cached_property
@@ -393,7 +394,8 @@ class LiveDataPlot(traits.HasTraits):
                                   show_label=False,
                                   ),
                              ),
-                             title='live data plot',
+                       title='live data plot',
+                       resizable = True,
                        )
 
 class PopUpPlot(traits.HasTraits):
@@ -406,7 +408,8 @@ class PopUpPlot(traits.HasTraits):
                                   show_label=False,
                                   ),
                              ),
-                             title='plot',
+                       title='plot',
+                       resizable = True,
                        )
 
 class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
