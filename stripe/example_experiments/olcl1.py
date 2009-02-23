@@ -1,4 +1,4 @@
-normal_gain = 20
+normal_gain = -40
 reverse_gain = -normal_gain
 
 n_repeats = 10

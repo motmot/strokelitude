@@ -24,7 +24,7 @@ class StripePluginInfo(strokelitude_plugin_module.PluginInfoBase):
         return StripeClass, StripeClassWorker
 
 class StripeClass(remote_traits.MaybeRemoteHasTraits):
-    gain = traits.Float(-900.0) # in (degrees per second) / degrees
+    gain = traits.Float(-40.0) # in (degrees per second) / degrees
     offset = traits.Float(0.0)  # in degrees per second
 
     traits_view = View( Group( ( Item(name='gain',label='gain [ (deg/sec) / deg ]'),
