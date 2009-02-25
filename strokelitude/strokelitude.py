@@ -639,80 +639,80 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
             # XXX naughty to cross thread boundary to get enabled_box value, too
             if (self.processing_enabled and not self.mask_dirty):
-                if 1:
-                    h,w = this_image.shape
-                    if not (self.width==w and self.height==h):
-                        raise NotImplementedError('need to support ROI')
 
-                    left_mat = self.left_mat
-                    right_mat = self.right_mat
+                h,w = this_image.shape
+                if not (self.width==w and self.height==h):
+                    raise NotImplementedError('need to support ROI')
 
-                    bg_left_vec = self.bg_left_vec
-                    bg_right_vec = self.bg_right_vec
+                left_mat = self.left_mat
+                right_mat = self.right_mat
 
-                    this_image_fi = FastImage.asfastimage(this_image)
-                    left_vals  = compute_sparse_mult(left_mat,this_image_fi)
-                    right_vals = compute_sparse_mult(right_mat,this_image_fi)
+                bg_left_vec = self.bg_left_vec
+                bg_right_vec = self.bg_right_vec
 
-                    left_vals = left_vals - bg_left_vec
-                    right_vals = right_vals - bg_right_vec
+                this_image_fi = FastImage.asfastimage(this_image)
+                left_vals  = compute_sparse_mult(left_mat,this_image_fi)
+                right_vals = compute_sparse_mult(right_mat,this_image_fi)
 
-                    results = []
-                    for side in ('left','right'):
-                        if side=='left':
-                            vals = left_vals
-                        else:
-                            vals = right_vals
+                left_vals = left_vals - bg_left_vec
+                right_vals = right_vals - bg_right_vec
 
-                        if not self.light_on_dark:
-                            vals = -vals
+                results = []
+                for side in ('left','right'):
+                    if side=='left':
+                        vals = left_vals
+                    else:
+                        vals = right_vals
 
-                        min_val = vals.min()
-                        mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
-                        if min_val==mid_val:
-                            # no variation in luminance
+                    if not self.light_on_dark:
+                        vals = -vals
+
+                    min_val = vals.min()
+                    mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
+                    if min_val==mid_val:
+                        # no variation in luminance
+                        interp_idx = -1
+                    else:
+                        first_idx=None
+                        for i in range(len(vals)-1):
+                            if (vals[i] < mid_val) and (vals[i+1] >= mid_val):
+                                first_idx = i
+                                second_idx = i+1
+                                break
+                        if first_idx is None:
                             interp_idx = -1
                         else:
-                            first_idx=None
-                            for i in range(len(vals)-1):
-                                if (vals[i] < mid_val) and (vals[i+1] >= mid_val):
-                                    first_idx = i
-                                    second_idx = i+1
-                                    break
-                            if first_idx is None:
-                                interp_idx = -1
-                            else:
-                                # slope (indices are unity apart)
-                                # y = mx+b
-                                m = vals[second_idx] - vals[first_idx]
-                                b = vals[first_idx] - m*first_idx
-                                interp_idx = (mid_val-b)/m
+                            # slope (indices are unity apart)
+                            # y = mx+b
+                            m = vals[second_idx] - vals[first_idx]
+                            b = vals[first_idx] - m*first_idx
+                            interp_idx = (mid_val-b)/m
 
-                        #latency_sec = time.time()-timestamp
-                        #print 'msec % 5.1f'%(latency_sec*1000.0,)
+                    #latency_sec = time.time()-timestamp
+                    #print 'msec % 5.1f'%(latency_sec*1000.0,)
 
-                        if interp_idx != -1:
-                            angle_radians = self.strokelitude_instance.maskdata.index2angle(side,
-                                                                                            interp_idx)
-                            results.append( angle_radians*R2D ) # keep results in degrees
+                    if interp_idx != -1:
+                        angle_radians = self.strokelitude_instance.maskdata.index2angle(side,
+                                                                                        interp_idx)
+                        results.append( angle_radians*R2D ) # keep results in degrees
 
-                        else:
-                            results.append( np.nan )
+                    else:
+                        results.append( np.nan )
 
-                    left_angle_degrees, right_angle_degrees = results
+                left_angle_degrees, right_angle_degrees = results
 
-                    ## for queue in self.plugin_data_queues:
-                    ##     queue.put( (cam_id,timestamp,framenumber,results) )
+                ## for queue in self.plugin_data_queues:
+                ##     queue.put( (cam_id,timestamp,framenumber,results) )
 
-                    # send values from each quad to be drawn
-                    self.vals_queue.put((left_vals, right_vals,
-                                         left_angle_degrees,right_angle_degrees,
-                                         ))
-                    event = wx.CommandEvent(DataReadyEvent)
-                    event.SetEventObject(self.strokelitude_instance.frame)
+                # send values from each quad to be drawn
+                self.vals_queue.put((left_vals, right_vals,
+                                     left_angle_degrees,right_angle_degrees,
+                                     ))
+                event = wx.CommandEvent(DataReadyEvent)
+                event.SetEventObject(self.strokelitude_instance.frame)
 
-                    # trigger call to self.OnDataReady
-                    wx.PostEvent(self.strokelitude_instance.frame, event)
+                # trigger call to self.OnDataReady
+                wx.PostEvent(self.strokelitude_instance.frame, event)
 
         finally:
             self.recomputing_lock.release()
