@@ -120,6 +120,8 @@ class MaskData(traits.HasTraits):
         'rotation','translation','view_from_below',
         ])
 
+    left_mat = traits.Property(depends_on=['quads_left'])
+
     mean_quad_angles_deg = traits.Property(depends_on=[
         'alpha', 'beta', 'nbins'])
 
@@ -127,6 +129,7 @@ class MaskData(traits.HasTraits):
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
         'rotation','translation','view_from_below',
         ])
+    right_mat = traits.Property(depends_on=['quads_right'])
 
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
@@ -196,6 +199,24 @@ class MaskData(traits.HasTraits):
     @traits.cached_property
     def _get_quads_right(self):
         return self.get_quads('right')
+
+    @traits.cached_property
+    def _get_left_mat(self):
+        result = []
+        for quad in self.quads_left:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
+    def _get_right_mat(self):
+        result = []
+        for quad in self.quads_right:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy)
+            result.append( (fi_roi, left, bottom) )
+        return result
 
     @traits.cached_property
     def _get_mean_quad_angles_deg(self):
@@ -720,28 +741,11 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
     def _recompute_mask_fired(self):
         with self.recomputing_lock:
-            count = 0
-
             left_quads = self.strokelitude_instance.maskdata.quads_left
             right_quads = self.strokelitude_instance.maskdata.quads_right
 
-            self.left_mat = []
-            for quad in left_quads:
-                fi_roi, left, bottom = quad2fastimage_offset(
-                    quad,
-                    self.width,self.height,
-                    debug_count=count)
-                self.left_mat.append( (fi_roi, left, bottom) )
-                count+=1
-
-            self.right_mat = []
-            for quad in right_quads:
-                fi_roi, left, bottom = quad2fastimage_offset(
-                    quad,
-                    self.width,self.height,
-                    debug_count=count)
-                self.right_mat.append( (fi_roi, left, bottom) )
-                count+=1
+            self.left_mat = self.strokelitude_instance.maskdata.left_mat
+            self.right_mat = self.strokelitude_instance.maskdata.right_mat
 
             bg = FastImage.asfastimage(self.bg_image)
             self.bg_left_vec = compute_sparse_mult(self.left_mat,bg)
