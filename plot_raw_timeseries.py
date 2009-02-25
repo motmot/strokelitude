@@ -1,3 +1,4 @@
+import pkg_resources
 import pylab
 import numpy as np
 
@@ -44,8 +45,13 @@ if 1:
     for i in range(N_subplots):
         ax = pylab.subplot(N_subplots,1,i+1,sharex=ax)
         if i < len(chans):
+            try:
+                label = names[int(chans[i])]
+            except Exception, err:
+                print 'ERROR: ingnoring exception %s'%(err,)
+                label = 'channel %s'%chans[i]
             ax.plot(r['timestamps']-t0,r[chans[i]]*analog_gain,
-                    label=names[int(chans[i])])
+                    label=label)
             ax.set_ylabel('V')
             ax.legend()
         elif i == len(chans):
