@@ -94,22 +94,32 @@ class PluginInfoBase(traits.HasTraits):
         oname = 'obj'
         key = random.randint(-sys.maxint,sys.maxint)
         data_queue = multiprocessing.Queue()
-        self.child = multiprocessing.Process( target=mainloop,
-                                              args=(
+
+        child = multiprocessing.Process( target=mainloop,
+                                         args=(
             klass_proxy,klass_worker,
             do_hostname,do_port,
             oname,data_queue,save_data_queues,
             display_text_queue, key,
             self.quit_event))
-        self.child.start() # fork subprocess
+        child.start() # fork subprocess
+        try:
+            view_hostname='localhost'
+            view_port = 8113
+            server = remote_traits.ServerObj(view_hostname,view_port,key=key)
 
-        view_hostname='localhost'
-        view_port = 8113
-        self.server = remote_traits.ServerObj(view_hostname,view_port,key=key)
+            hastraits_proxy = server.get_proxy_hastraits_instance(do_hostname,
+                                                                  do_port,
+                                                                  oname,
+                                                                  key=key)
+        except:
+            self.quit_event.set() # close the child process
+            raise
 
-        hastraits_proxy = self.server.get_proxy_hastraits_instance(do_hostname,
-                                                                   do_port,
-                                                                   oname,
-                                                                   key=key)
+        # Keep these asignments delayed -- if the above steps fail, we
+        # don't want to set self.child and self.server
+
+        self.child = child
+        self.server = server
         return (hastraits_proxy, data_queue, save_data_queues,
                 descr_dict, display_text_queue)
