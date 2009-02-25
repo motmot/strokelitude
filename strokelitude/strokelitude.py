@@ -123,7 +123,7 @@ class MaskData(traits.HasTraits):
 
     left_mat = traits.Property(depends_on=['quads_left'])
     left_mat_half = traits.Property(depends_on=['quads_left'])
-    left_mat_half_float32 = traits.Property(depends_on=['quads_left'])
+    left_mat_quarter = traits.Property(depends_on=['quads_left'])
 
     mean_quad_angles_deg = traits.Property(depends_on=[
         'alpha', 'beta', 'nbins'])
@@ -134,7 +134,7 @@ class MaskData(traits.HasTraits):
         ])
     right_mat = traits.Property(depends_on=['quads_right'])
     right_mat_half = traits.Property(depends_on=['quads_right'])
-    right_mat_half_float32 = traits.Property(depends_on=['quads_right'])
+    right_mat_quarter = traits.Property(depends_on=['quads_right'])
 
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
@@ -220,17 +220,17 @@ class MaskData(traits.HasTraits):
         for quad in self.quads_left:
             fi_roi, left, bottom = quad2fastimage_offset(quad,
                                                          self.maxx,self.maxy,
-                                                         half=True)
+                                                         frac=2)
             result.append( (fi_roi, left, bottom) )
         return result
 
     @traits.cached_property
-    def _get_left_mat_half_float32(self):
+    def _get_left_mat_quarter(self):
         result = []
         for quad in self.quads_left:
             fi_roi, left, bottom = quad2fastimage_offset(quad,
                                                          self.maxx,self.maxy,
-                                                         half=True,float32=True)
+                                                         frac=4)
             result.append( (fi_roi, left, bottom) )
         return result
 
@@ -249,17 +249,17 @@ class MaskData(traits.HasTraits):
         for quad in self.quads_right:
             fi_roi, left, bottom = quad2fastimage_offset(quad,
                                                          self.maxx,self.maxy,
-                                                         half=True)
+                                                         frac=2)
             result.append( (fi_roi, left, bottom) )
         return result
 
     @traits.cached_property
-    def _get_right_mat_half_float32(self):
+    def _get_right_mat_quarter(self):
         result = []
         for quad in self.quads_right:
             fi_roi, left, bottom = quad2fastimage_offset(quad,
                                                          self.maxx,self.maxy,
-                                                         half=True,float32=True)
+                                                         frac=4)
             result.append( (fi_roi, left, bottom) )
         return result
 
@@ -380,11 +380,13 @@ class MaskData(traits.HasTraits):
         linesegs.append( verts.T.ravel() )
         return linesegs
 
-def quad2fastimage_offset(quad,width,height,debug_count=0,half=False,float32=False):
+def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     """convert a quad to an image vector"""
-    if half:
-        width = width*0.5
-        height = height*0.5
+    mult = 1.0/frac
+    newwidth = width//frac
+    newheight = height//frac
+    assert newwidth*frac == width, "width is not evenly divisible by frac"
+    assert newheight*frac == height, "height is not evenly divisible by frac"
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
                                  width, height)
     ctx = cairo.Context(surface)
@@ -395,9 +397,8 @@ def quad2fastimage_offset(quad,width,height,debug_count=0,half=False,float32=Fal
 
     x0=quad[0]
     y0=quad[1]
-    if half:
-        x0 = x0*0.5
-        y0 = y0*0.5
+    x0 = x0*mult
+    y0 = y0*mult
     ctx.move_to(x0,y0)
     xmin = int(np.floor(x0))
     xmax = int(np.ceil(x0+1))
@@ -406,9 +407,8 @@ def quad2fastimage_offset(quad,width,height,debug_count=0,half=False,float32=Fal
 
     xs = quad[2::2]
     ys = quad[3::2]
-    if half:
-        xs = xs*0.5
-        ys = ys*0.5
+    xs = xs*mult
+    ys = ys*mult
     for (x,y) in zip(xs,ys):
         ctx.line_to(x,y)
         xmin = min(int(np.floor(x)),xmin)
@@ -905,7 +905,7 @@ class SobelFinder(AmplitudeFinder):
         if self.processing_enabled:
             frame = np.asarray(buf)
 
-            downsampled = np.array(frame[::2,::2])
+            downsampled = np.array(frame[::4,::4])
             bad_cond = (downsampled < self.mask_thresh).astype(np.uint8)
             if True:
                 fi_bad_cond = FastImage.asfastimage(bad_cond)
@@ -972,12 +972,12 @@ class SobelFinder(AmplitudeFinder):
             #print 'G_x[:5,:5]',npG_x[:5,:5]
             #print 'np.max(G_x)',np.max(npG_x)
             if binarize:
-                left_mat_half = self.strokelitude_instance.maskdata.left_mat_half
-                right_mat_half = self.strokelitude_instance.maskdata.right_mat_half
+                left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
+                right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
 
                 fi_binG = FastImage.asfastimage(binG)
-                left_vals  = compute_sparse_mult(left_mat_half,fi_binG)
-                right_vals = compute_sparse_mult(right_mat_half,fi_binG)
+                left_vals  = compute_sparse_mult(left_mat_quarter,fi_binG)
+                right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
             else:
                 left_mat_half = self.strokelitude_instance.maskdata.left_mat_half_float32
                 right_mat_half = self.strokelitude_instance.maskdata.right_mat_half_float32
