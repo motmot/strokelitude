@@ -644,12 +644,11 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
                     if not (self.width==w and self.height==h):
                         raise NotImplementedError('need to support ROI')
 
-                    else:
-                        left_mat = self.left_mat
-                        right_mat = self.right_mat
+                    left_mat = self.left_mat
+                    right_mat = self.right_mat
 
-                        bg_left_vec = self.bg_left_vec
-                        bg_right_vec = self.bg_right_vec
+                    bg_left_vec = self.bg_left_vec
+                    bg_right_vec = self.bg_right_vec
 
                     this_image_fi = FastImage.asfastimage(this_image)
                     left_vals  = compute_sparse_mult(left_mat,this_image_fi)
