@@ -3,7 +3,7 @@ import numpy as np
 
 import sys
 import tables
-import fview_ext_trig.easy_decode as easy_decode
+import motmot.fview_ext_trig.easy_decode as easy_decode
 
 import matplotlib.ticker as mticker
 
