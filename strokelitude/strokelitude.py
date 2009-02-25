@@ -910,7 +910,9 @@ class SobelFinder(AmplitudeFinder):
                 # use ROI to prevent edge effects
                 h,w = bad_cond.shape
                 fi_bad_cond_roi = fi_bad_cond.roi(1,1,FastImage.Size(w-2,h-2))
-                fi_bad_cond_roi.dilate3x3_inplace(fi_bad_cond_roi.size,n_iter=self.n_iterations_dilation)
+                for i in range(self.n_iterations_dilation):
+                    fi_bad_cond_roi_new = fi_bad_cond_roi.dilate3x3(fi_bad_cond_roi.size)
+                    fi_bad_cond_roi_new.get_8u_copy_put( fi_bad_cond_roi, fi_bad_cond_roi.size)
                 bad_cond = np.asarray(fi_bad_cond)>0
             else:
                 if self.n_iterations_dilation:
