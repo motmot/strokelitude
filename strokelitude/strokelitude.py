@@ -423,20 +423,34 @@ class PopUpPlot(traits.HasTraits):
                        resizable = True,
                        )
 
-class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
-    plugin_name = traits.Str('-=| strokelitude |=-')
+class AmplitudeFinder(traits.HasTraits):
+    strokelitude_instance = traits.Any # really, instance of StrokelitudeClass
 
-    # the meta-class, contains startup() and shutdown:
-    current_stimulus_plugin = traits.Instance(strokelitude_plugin_module.PluginInfoBase)
-    avail_stim_plugins = traits.List(strokelitude_plugin_module.PluginInfoBase)
+    def post_init(self, strokelitude_instance):
+        self.strokelitude_instance = strokelitude_instance # my parent
 
-    # the proxy for the real plugin:
-    hastraits_proxy = traits.Instance(traits.HasTraits)
-    hastraits_ui = traits.Instance(traits.HasTraits)
-    edit_stimulus = traits.Button
+    def camera_starting_notification(self,cam_id,
+                                     pixel_format=None,
+                                     max_width=None,
+                                     max_height=None):
+        # this method exists primarily to be overriden
+        pass
 
+    def offline_startup_func(self,arg):
+        # this method exists primarily to be overriden
+        pass
+
+    def process_frame(self,buf,buf_offset,timestamp,framenumber):
+        """do the work"""
+        left_angle_degrees = np.nan
+        right_angle_degrees = np.nan
+        draw_points = [] #  [ (x,y) ]
+        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
+
+        return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+
+class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
     mask_dirty = traits.Bool(False) # let __init__ set True
-    maskdata = traits.Instance(MaskData)
 
     recompute_mask = traits.Event
     take_bg = traits.Event
@@ -444,119 +458,86 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
     background_viewer = traits.Instance(PopUpPlot)
     live_data_viewer = traits.Instance(LiveDataPlot)
-
-    processing_enabled = traits.Bool(False)
-
-    draw_mask = traits.Bool
-
-    latency_msec = traits.Float()
-    threshold_fraction = traits.Float(0.5)
-    light_on_dark = traits.Bool(True)
-    save_to_disk = traits.Bool(False)
-    streaming_filename = traits.File
-    timestamp_modeler = traits.Instance(
-        modeler_module.LiveTimestampModelerWithAnalogInput )
-
     live_data_plot = traits.Instance(LiveDataPlot)
 
-    traits_view = View( Group( Item(name='latency_msec',
-                                    label='latency (msec)',
-                                    style='readonly',
-                                    ),
-                               Group(
-                               Item('current_stimulus_plugin',
-                                    show_label=False,
-                                    editor=InstanceEditor(
-        name = 'avail_stim_plugins',
-        selectable=True,
-        editable = False),
-                                    style='custom'),
-                               Item('edit_stimulus',show_label=False),
-                               orientation='horizontal'),
-                               Item('recompute_mask',
+    processing_enabled = traits.Bool(False)
+    light_on_dark = traits.Bool(True)
+    threshold_fraction = traits.Float(0.5)
+
+    traits_view = View( Group( Item('recompute_mask',
                                     editor=ButtonEditor(),show_label=False),
                                Item('processing_enabled'),
-                               Item('draw_mask'),
                                Item('take_bg',
                                     editor=ButtonEditor(),show_label=False),
                                Item('clear_bg',
                                     editor=ButtonEditor(),show_label=False),
                                Item('background_viewer',show_label=False),
                                Item('live_data_viewer',show_label=False),
-                               Item('maskdata',show_label=False),
                                Item('live_data_plot',show_label=False),
                                Item(name='threshold_fraction',
                                     ),
                                Item(name='light_on_dark',
                                     ),
-                               Item(name='save_to_disk',
-                                    ),
-                               Item(name='streaming_filename',
-                                    style='readonly'),
                                ))
-
-    def __init__(self,*args,**kw):
-        print 'init called',args,kw
-        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,600))
-        super(StrokelitudeClass,self).__init__(*args,**kw)
-
-        self.timestamp_modeler = None
-        self.drawsegs_cache = None
-        self.streaming_file = None
-        self.stream_ain_table   = None
-        self.stream_time_data_table = None
-        self.stream_table   = None
-        self.stream_plugin_tables = None
-        self.plugin_table_dtypes = None
-        self.current_plugin_descr_dict = {}
-        self.display_text_queue = None
-
-        # load maskdata from file
-        self.pkl_fname = motmot.utils.config.rc_fname(
-            must_already_exist=False,
-            filename='strokelitude-maskdata.pkl',
-            dirname='.fview')
-        loaded_maskdata = False
-        if os.path.exists(self.pkl_fname):
-            try:
-                self.maskdata = pickle.load(open(self.pkl_fname))
-                loaded_maskdata = True
-            except Exception,err:
-                warnings.warn(
-                    'could not open strokelitude persistance file: %s'%err)
-        if not loaded_maskdata:
-            self.maskdata = MaskData()
-        self.maskdata.on_trait_change( self.on_mask_change )
-        self.save_data_queue = Queue.Queue()
-
-        self.vals_queue = Queue.Queue()
+    def __init__(self,*args,**kwargs):
+        super(BackgroundSubtractionDotProductFinder,self).__init__(*args,**kwargs)
         self.bg_cmd_queue = Queue.Queue()
         self.new_bg_image_lock = threading.Lock()
         self.new_bg_image = None
-
         self.recomputing_lock = threading.Lock()
-        # for passing data to the pluging
-        self.current_plugin_queue = None
-        # for saving data:
-        self.current_plugin_save_queues = {} # replaced later
+        self.drawsegs_cache = None
 
         self.background_viewer = PopUpPlot()
         self.live_data_plot = LiveDataPlot()
+        self.vals_queue = Queue.Queue()
 
-        if 1:
-            # load plugins
-            plugins = load_plugins()
-            for p in plugins:
-                self.avail_stim_plugins.append(p)
-            if len(self.avail_stim_plugins):
-                self.current_stimulus_plugin = self.avail_stim_plugins[0]
-            self.quit_plugin_event = threading.Event()
+    def _take_bg_fired(self):
+        self.mask_dirty = True
+        self.bg_cmd_queue.put('take')
+
+    def _clear_bg_fired(self):
+        self.mask_dirty = True
+        self.bg_cmd_queue.put('clear')
+
+    def OnNewBGReady(self,event):
+        with self.new_bg_image_lock:
+            new_bg_image = self.new_bg_image
+            self.new_bg_image = None
+        if self.strokelitude_instance.save_to_disk:
+            print 'should save BG image to disk'
+        self.bg_pd.set_data("imagedata", new_bg_image)
+        self.bg_plot.request_redraw()
+        # we have not yet done the sparse multiplication yet
+
+    def OnDataReady(self, event):
+        lrvals = None
+        while 1:
+            # We only care about most recent results. Discard older data.
+            try:
+                lrvals = self.vals_queue.get_nowait()
+            except Queue.Empty:
+                break
+        if lrvals is None:
+            return
+
+        left_vals, right_vals,left_angle_degrees,right_angle_degrees = lrvals
+        self.live_pd['left'].set_data('live',left_vals)
+        self.live_pd['right'].set_data('live',right_vals)
+        self.live_data_plot.left_angle = left_angle_degrees
+        self.live_data_plot.right_angle = right_angle_degrees
+
+    def post_init(self, *args,**kwargs):
+        super(BackgroundSubtractionDotProductFinder,self).post_init(*args,**kwargs)
+
+        self.strokelitude_instance.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
+        self.strokelitude_instance.frame.Connect( -1, -1, BGReadyEvent, self.OnNewBGReady )
+        self.mask_dirty = True
 
         if 1:
             self.live_pd = {}
             for side in ['left','right']:
 
-                x=self.maskdata.mean_quad_angles_deg
+                x=self.strokelitude_instance.maskdata.mean_quad_angles_deg
                 y=np.zeros_like(x)
 
                 pd=ArrayPlotData(index=x)
@@ -603,13 +584,312 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                           tool_mode="box", always_on=False))
 
             self.background_viewer.plot = self.bg_plot
+
+        self.strokelitude_instance.maskdata.on_trait_change( self.on_mask_change )
+
+    def camera_starting_notification(self,cam_id,
+                                     pixel_format=None,
+                                     max_width=None,
+                                     max_height=None):
+
+        self.width = max_width
+        self.height = max_height
+
+        with self.recomputing_lock:
+            self.bg_image = np.zeros( (self.height,self.width), dtype=np.uint8 )
+
+    def offline_startup_func(self,arg):
+        # automatically recompute mask and enable processing in offline mode
+        self.recompute_mask = True # fire event
+        assert self.mask_dirty==False
+        self.processing_enabled = True
+
+    def process_frame(self,buf,buf_offset,timestamp,framenumber):
+        """do the work"""
+        draw_points = [] #  [ (x,y) ]
+        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
+        left_angle_degrees = np.nan
+        right_angle_degrees = np.nan
+
+        have_lock = self.recomputing_lock.acquire(False) # don't block
+        if not have_lock:
+            return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+
+        try:
+            command = None
+            while 1:
+                try:
+                    # all we care about is last command
+                    command = self.bg_cmd_queue.get_nowait()
+                except Queue.Empty, err:
+                    break
+
+            bg_image_changed = False
+            this_image = np.asarray(buf)
+            if command == 'clear':
+                bg_image_changed = True
+                self.bg_image = np.zeros_like( this_image )
+            elif command == 'take':
+                bg_image_changed = True
+                self.bg_image = np.array( this_image, copy=True )
+            if bg_image_changed:
+                with self.new_bg_image_lock:
+                    self.new_bg_image = np.array( self.bg_image, copy=True )
+
+                event = wx.CommandEvent(BGReadyEvent)
+                event.SetEventObject(self.strokelitude_instance.frame)
+
+                # trigger call to self.OnNewBGReady
+                wx.PostEvent(self.strokelitude_instance.frame, event)
+
+            # XXX naughty to cross thread boundary to get enabled_box value, too
+            if (self.processing_enabled and not self.mask_dirty):
+                if 1:
+                    self.drawsegs_cache = []
+
+                    h,w = this_image.shape
+                    if not (self.width==w and self.height==h):
+                        raise NotImplementedError('need to support ROI')
+
+                    else:
+                        left_mat = self.left_mat
+                        right_mat = self.right_mat
+
+                        bg_left_vec = self.bg_left_vec
+                        bg_right_vec = self.bg_right_vec
+
+                    this_image_fi = FastImage.asfastimage(this_image)
+                    left_vals  = compute_sparse_mult(left_mat,this_image_fi)
+                    right_vals = compute_sparse_mult(right_mat,this_image_fi)
+
+                    left_vals = left_vals - bg_left_vec
+                    right_vals = right_vals - bg_right_vec
+
+                    results = []
+                    for side in ('left','right'):
+                        if side=='left':
+                            vals = left_vals
+                        else:
+                            vals = right_vals
+
+                        if not self.light_on_dark:
+                            vals = -vals
+
+                        min_val = vals.min()
+                        mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
+                        if min_val==mid_val:
+                            # no variation in luminance
+                            interp_idx = -1
+                        else:
+                            first_idx=None
+                            for i in range(len(vals)-1):
+                                if (vals[i] < mid_val) and (vals[i+1] >= mid_val):
+                                    first_idx = i
+                                    second_idx = i+1
+                                    break
+                            if first_idx is None:
+                                interp_idx = -1
+                            else:
+                                # slope (indices are unity apart)
+                                # y = mx+b
+                                m = vals[second_idx] - vals[first_idx]
+                                b = vals[first_idx] - m*first_idx
+                                interp_idx = (mid_val-b)/m
+
+                        #latency_sec = time.time()-timestamp
+                        #print 'msec % 5.1f'%(latency_sec*1000.0,)
+
+                        if interp_idx != -1:
+                            angle_radians = self.strokelitude_instance.maskdata.index2angle(side,
+                                                                                            interp_idx)
+                            results.append( angle_radians*R2D ) # keep results in degrees
+
+                            # draw lines
+                            this_seg = self.strokelitude_instance.maskdata.get_span_lineseg(side,angle_radians)
+                            draw_linesegs.extend(this_seg)
+                            self.drawsegs_cache.extend( this_seg )
+                        else:
+                            results.append( np.nan )
+
+                    left_angle_degrees, right_angle_degrees = results
+
+                    ## for queue in self.plugin_data_queues:
+                    ##     queue.put( (cam_id,timestamp,framenumber,results) )
+
+                    # send values from each quad to be drawn
+                    self.vals_queue.put((left_vals, right_vals,
+                                         left_angle_degrees,right_angle_degrees,
+                                         ))
+                    event = wx.CommandEvent(DataReadyEvent)
+                    event.SetEventObject(self.strokelitude_instance.frame)
+
+                    # trigger call to self.OnDataReady
+                    wx.PostEvent(self.strokelitude_instance.frame, event)
+                else:
+                    if self.drawsegs_cache is not None:
+                        draw_linesegs.extend( self.drawsegs_cache )
+
+            else:
+                self.drawsegs_cache = None
+
+        finally:
+            self.recomputing_lock.release()
+        return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+
+    def _recompute_mask_fired(self):
+        with self.recomputing_lock:
+            count = 0
+
+            left_quads = self.strokelitude_instance.maskdata.quads_left
+            right_quads = self.strokelitude_instance.maskdata.quads_right
+
+            self.left_mat = []
+            for quad in left_quads:
+                fi_roi, left, bottom = quad2fastimage_offset(
+                    quad,
+                    self.width,self.height,
+                    debug_count=count)
+                self.left_mat.append( (fi_roi, left, bottom) )
+                count+=1
+
+            self.right_mat = []
+            for quad in right_quads:
+                fi_roi, left, bottom = quad2fastimage_offset(
+                    quad,
+                    self.width,self.height,
+                    debug_count=count)
+                self.right_mat.append( (fi_roi, left, bottom) )
+                count+=1
+
+            bg = FastImage.asfastimage(self.bg_image)
+            self.bg_left_vec = compute_sparse_mult(self.left_mat,bg)
+            self.bg_right_vec= compute_sparse_mult(self.right_mat,bg)
+
+            self.live_pd['left'].set_data('bg',self.bg_left_vec)
+            self.live_pd['right'].set_data('bg',self.bg_right_vec)
+            #self.left_plot.request_redraw()
+            #self.right_plot.request_redraw()
+
+            self.mask_dirty=False
+
+    def on_mask_change(self):
+        self.mask_dirty=True
+
+    def _mask_dirty_changed(self):
+        if self.mask_dirty:
+            self.processing_enabled = False
+
+class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
+    plugin_name = traits.Str('-=| strokelitude |=-')
+
+    # the meta-class, contains startup() and shutdown:
+    current_stimulus_plugin = traits.Instance(strokelitude_plugin_module.PluginInfoBase)
+    avail_stim_plugins = traits.List(strokelitude_plugin_module.PluginInfoBase)
+
+    # the proxy for the real plugin:
+    hastraits_proxy = traits.Instance(traits.HasTraits)
+    hastraits_ui = traits.Instance(traits.HasTraits)
+    edit_stimulus = traits.Button
+
+    current_amplitude_method = traits.Instance(AmplitudeFinder)
+    avail_amplitude_methods = traits.List(AmplitudeFinder)
+
+    draw_mask = traits.Bool
+
+    latency_msec = traits.Float()
+    save_to_disk = traits.Bool(False)
+    streaming_filename = traits.File
+    timestamp_modeler = traits.Instance(
+        modeler_module.LiveTimestampModelerWithAnalogInput )
+
+    maskdata = traits.Instance(MaskData)
+
+    traits_view = View( Group( Item(name='latency_msec',
+                                    label='latency (msec)',
+                                    style='readonly',
+                                    ),
+                               Item('current_amplitude_method',
+                                    editor=InstanceEditor(
+        name = 'avail_amplitude_methods',
+        selectable=True,
+        editable = True),
+                                    style='custom'),
+                               Group(
+                               Item('current_stimulus_plugin',
+                                    show_label=False,
+                                    editor=InstanceEditor(
+        name = 'avail_stim_plugins',
+        selectable=True,
+        editable = False),
+                                    style='custom'),
+                               Item('edit_stimulus',show_label=False),
+                               orientation='horizontal'),
+
+                               Item('draw_mask'),
+
+                               Item('maskdata',show_label=False),
+
+                               Item(name='save_to_disk',
+                                    ),
+                               Item(name='streaming_filename',
+                                    style='readonly'),
+                               ))
+
+    def __init__(self,*args,**kw):
+        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,600))
+        super(StrokelitudeClass,self).__init__(*args,**kw)
+
+        self.timestamp_modeler = None
+        self.streaming_file = None
+        self.stream_ain_table   = None
+        self.stream_time_data_table = None
+        self.stream_table   = None
+        self.stream_plugin_tables = None
+        self.plugin_table_dtypes = None
+        self.current_plugin_descr_dict = {}
+        self.display_text_queue = None
+
+        # load maskdata from file
+        self.pkl_fname = motmot.utils.config.rc_fname(
+            must_already_exist=False,
+            filename='strokelitude-maskdata.pkl',
+            dirname='.fview')
+        loaded_maskdata = False
+        if os.path.exists(self.pkl_fname):
+            try:
+                self.maskdata = pickle.load(open(self.pkl_fname))
+                loaded_maskdata = True
+            except Exception,err:
+                warnings.warn(
+                    'could not open strokelitude persistance file: %s'%err)
+        if not loaded_maskdata:
+            self.maskdata = MaskData()
+        self.save_data_queue = Queue.Queue()
+
+        # for passing data to the plugin
+        self.current_plugin_queue = None
+        # for saving data:
+        self.current_plugin_save_queues = {} # replaced later
+
+        if 1:
+            # load analysis methods
+            self.avail_amplitude_methods.append(BackgroundSubtractionDotProductFinder())
+            self.current_amplitude_method = self.avail_amplitude_methods[0]
+            for method in self.avail_amplitude_methods:
+                method.post_init(self)
+
+        if 1:
+            # load plugins
+            plugins = load_plugins()
+            for p in plugins:
+                self.avail_stim_plugins.append(p)
+            if len(self.avail_stim_plugins):
+                self.current_stimulus_plugin = self.avail_stim_plugins[0]
+            self.quit_plugin_event = threading.Event()
+
         self.cam_id = None
         self.width = 20
         self.height = 10
-
-        self.frame.Connect( -1, -1, DataReadyEvent, self.OnDataReady )
-        self.frame.Connect( -1, -1, BGReadyEvent, self.OnNewBGReady )
-        self.mask_dirty = True
 
         ID_Timer = wx.NewId()
         self.timer = wx.Timer(self.frame, ID_Timer)
@@ -669,10 +949,6 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 table = self.stream_plugin_tables[name]
                 table.append(recarray)
                 table.flush()
-
-    def _mask_dirty_changed(self):
-        if self.mask_dirty:
-            self.processing_enabled = False
 
     def _save_to_disk_changed(self):
         self.service_save_data(flush=True) # flush buffers
@@ -755,52 +1031,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
         print '...done _current_stimulus_plugin_changed'
 
-    def _recompute_mask_fired(self):
-        print 'recomputing mask'
-        with self.recomputing_lock:
-            count = 0
-
-            left_quads = self.maskdata.quads_left
-            right_quads = self.maskdata.quads_right
-
-            self.left_mat = []
-            for quad in left_quads:
-                fi_roi, left, bottom = quad2fastimage_offset(
-                    quad,
-                    self.width,self.height,
-                    debug_count=count)
-                self.left_mat.append( (fi_roi, left, bottom) )
-                count+=1
-
-            self.right_mat = []
-            for quad in right_quads:
-                fi_roi, left, bottom = quad2fastimage_offset(
-                    quad,
-                    self.width,self.height,
-                    debug_count=count)
-                self.right_mat.append( (fi_roi, left, bottom) )
-                count+=1
-
-            bg = FastImage.asfastimage(self.bg_image)
-            print 'self.bg_image[:10,:10]'
-            print self.bg_image[:10,:10]
-            self.bg_left_vec = compute_sparse_mult(self.left_mat,bg)
-            self.bg_right_vec= compute_sparse_mult(self.right_mat,bg)
-
-            self.live_pd['left'].set_data('bg',self.bg_left_vec)
-            self.live_pd['right'].set_data('bg',self.bg_right_vec)
-            #self.left_plot.request_redraw()
-            #self.right_plot.request_redraw()
-
-            print self.bg_left_vec
-
-            self.mask_dirty=False
-
-    def on_mask_change(self):
-        self.mask_dirty=True
-
     def get_buffer_allocator(self,cam_id):
         return BufferAllocator()
+
     def process_frame(self,cam_id,buf,buf_offset,timestamp,framenumber):
         """do work on each frame
 
@@ -811,8 +1044,6 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         class.
 
         """
-        draw_points = [] #  [ (x,y) ]
-        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.timestamp_modeler is not None:
             trigger_timestamp = self.timestamp_modeler.register_frame(
@@ -820,187 +1051,29 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         else:
             trigger_timestamp = None
 
-        have_lock = self.recomputing_lock.acquire(False) # don't block
-        if not have_lock:
-            return draw_points, draw_linesegs
+        tmp = self.current_amplitude_method.process_frame(buf,buf_offset,timestamp,framenumber)
+        left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs = tmp
 
-        try:
-            if self.draw_mask:
-                # XXX this is naughty -- it's not threasafe.
-                # concatenate lists
-                extra = self.maskdata.all_linesegs
+        processing_timestamp = time.time()
+        if trigger_timestamp is not None:
+            self.latency_msec = (processing_timestamp-trigger_timestamp)*1000.0
 
-                draw_linesegs.extend( extra )
+        if self.current_plugin_queue is not None:
+            self.current_plugin_queue.put(
+                (framenumber,left_angle_degrees, right_angle_degrees,
+                trigger_timestamp) )
+        self.save_data_queue.put(
+            (framenumber,trigger_timestamp,processing_timestamp,
+            left_angle_degrees, right_angle_degrees))
 
-            command = None
-            while 1:
-                try:
-                    # all we care about is last command
-                    command = self.bg_cmd_queue.get_nowait()
-                except Queue.Empty, err:
-                    break
+        if self.draw_mask:
+            # XXX this is naughty -- it's not threasafe.
+            # concatenate lists
+            extra = self.maskdata.all_linesegs
 
-            bg_image_changed = False
-            this_image = np.asarray(buf)
-            if command == 'clear':
-                bg_image_changed = True
-                self.bg_image = np.zeros_like( this_image )
-            elif command == 'take':
-                bg_image_changed = True
-                self.bg_image = np.array( this_image, copy=True )
-            if bg_image_changed:
-                with self.new_bg_image_lock:
-                    self.new_bg_image = np.array( self.bg_image, copy=True )
-
-                event = wx.CommandEvent(BGReadyEvent)
-                event.SetEventObject(self.frame)
-
-                # trigger call to self.OnNewBGReady
-                wx.PostEvent(self.frame, event)
-
-            # XXX naughty to cross thread boundary to get enabled_box value, too
-            if (self.processing_enabled and not self.mask_dirty):
-                if 1:
-                    self.drawsegs_cache = []
-
-                    h,w = this_image.shape
-                    if not (self.width==w and self.height==h):
-                        raise NotImplementedError('need to support ROI')
-
-                    else:
-                        left_mat = self.left_mat
-                        right_mat = self.right_mat
-
-                        bg_left_vec = self.bg_left_vec
-                        bg_right_vec = self.bg_right_vec
-
-                    this_image_fi = FastImage.asfastimage(this_image)
-                    left_vals  = compute_sparse_mult(left_mat,this_image_fi)
-                    right_vals = compute_sparse_mult(right_mat,this_image_fi)
-
-                    left_vals = left_vals - bg_left_vec
-                    right_vals = right_vals - bg_right_vec
-
-                    results = []
-                    for side in ('left','right'):
-                        if side=='left':
-                            vals = left_vals
-                        else:
-                            vals = right_vals
-
-                        if not self.light_on_dark:
-                            vals = -vals
-
-                        min_val = vals.min()
-                        mid_val = (vals.max() - min_val)*self.threshold_fraction + min_val
-                        if min_val==mid_val:
-                            # no variation in luminance
-                            interp_idx = -1
-                        else:
-                            first_idx=None
-                            for i in range(len(vals)-1):
-                                if (vals[i] < mid_val) and (vals[i+1] >= mid_val):
-                                    first_idx = i
-                                    second_idx = i+1
-                                    break
-                            if first_idx is None:
-                                interp_idx = -1
-                            else:
-                                # slope (indices are unity apart)
-                                # y = mx+b
-                                m = vals[second_idx] - vals[first_idx]
-                                b = vals[first_idx] - m*first_idx
-                                interp_idx = (mid_val-b)/m
-
-                        #latency_sec = time.time()-timestamp
-                        #print 'msec % 5.1f'%(latency_sec*1000.0,)
-
-                        if interp_idx != -1:
-                            angle_radians = self.maskdata.index2angle(side,
-                                                                      interp_idx)
-                            results.append( angle_radians*R2D ) # keep results in degrees
-
-                            # draw lines
-                            this_seg = self.maskdata.get_span_lineseg(side,angle_radians)
-                            draw_linesegs.extend(this_seg)
-                            self.drawsegs_cache.extend( this_seg )
-                        else:
-                            results.append( np.nan )
-
-                    left_angle_degrees, right_angle_degrees = results
-                    processing_timestamp = time.time()
-                    if trigger_timestamp is not None:
-                        self.latency_msec = (processing_timestamp-trigger_timestamp)*1000.0
-
-                    if self.current_plugin_queue is not None:
-                        self.current_plugin_queue.put(
-                            (framenumber,left_angle_degrees, right_angle_degrees,
-                            trigger_timestamp) )
-                    self.save_data_queue.put(
-                        (framenumber,trigger_timestamp,processing_timestamp,
-                        left_angle_degrees, right_angle_degrees))
-
-                    ## for queue in self.plugin_data_queues:
-                    ##     queue.put( (cam_id,timestamp,framenumber,results) )
-
-                    # send values from each quad to be drawn
-                    self.vals_queue.put((left_vals, right_vals,
-                                         left_angle_degrees,right_angle_degrees,
-                                         ))
-                    event = wx.CommandEvent(DataReadyEvent)
-                    event.SetEventObject(self.frame)
-
-                    # trigger call to self.OnDataReady
-                    wx.PostEvent(self.frame, event)
-                else:
-                    if self.drawsegs_cache is not None:
-                        draw_linesegs.extend( self.drawsegs_cache )
-
-            else:
-                self.drawsegs_cache = None
-                if trigger_timestamp is not None:
-                    now = time.time()
-                    self.latency_msec = (now-trigger_timestamp)*1000.0
-
-        finally:
-            self.recomputing_lock.release()
+            draw_linesegs.extend( extra )
 
         return draw_points, draw_linesegs
-
-    def _take_bg_fired(self):
-        self.mask_dirty = True
-        self.bg_cmd_queue.put('take')
-
-    def _clear_bg_fired(self):
-        self.mask_dirty = True
-        self.bg_cmd_queue.put('clear')
-
-    def OnNewBGReady(self,event):
-        with self.new_bg_image_lock:
-            new_bg_image = self.new_bg_image
-            self.new_bg_image = None
-        if self.save_to_disk:
-            print 'should save BG image to disk'
-        self.bg_pd.set_data("imagedata", new_bg_image)
-        self.bg_plot.request_redraw()
-        # we have not yet done the sparse multiplication yet
-
-    def OnDataReady(self, event):
-        lrvals = None
-        while 1:
-            # We only care about most recent results. Discard older data.
-            try:
-                lrvals = self.vals_queue.get_nowait()
-            except Queue.Empty:
-                break
-        if lrvals is None:
-            return
-
-        left_vals, right_vals,left_angle_degrees,right_angle_degrees = lrvals
-        self.live_pd['left'].set_data('live',left_vals)
-        self.live_pd['right'].set_data('live',right_vals)
-        self.live_data_plot.left_angle = left_angle_degrees
-        self.live_data_plot.right_angle = right_angle_degrees
 
     def camera_starting_notification(self,cam_id,
                                      pixel_format=None,
@@ -1015,18 +1088,16 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         self.maskdata.maxx = self.width
         self.maskdata.maxy = self.height
 
-        with self.recomputing_lock:
-            self.bg_image = np.zeros( (self.height,self.width), dtype=np.uint8 )
-
-        #self.OnClearBg(None)
+        for method in self.avail_amplitude_methods:
+            method.camera_starting_notification(cam_id,
+                                                pixel_format=pixel_format,
+                                                max_width=max_width,
+                                                max_height=max_height)
 
     def offline_startup_func(self,arg):
         """gets called by fview_replay_fmf"""
-
-        # automatically recompute mask and enable processing in offline mode
-        self.recompute_mask = True # fire event
-        assert self.mask_dirty==False
-        self.processing_enabled = True
+        for method in self.avail_amplitude_methods:
+            method.offline_startup_func(arg)
 
     def set_all_fview_plugins(self,plugins):
         print 'set_all_fview_plugins called'
