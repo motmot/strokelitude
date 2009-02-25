@@ -830,6 +830,7 @@ class SobelFinder(AmplitudeFinder):
     maxG = traits.Int(15)
     n_iterations_dilation = traits.Int(10)
     gaussian_sigma = traits.Float(3.0)
+    line_strength_thresh = traits.Float(20.0)
     update_plots = traits.Bool(False)
     bg_viewer = traits.Instance(PopUpPlot)
     a1_viewer = traits.Instance(PopUpPlot)
@@ -839,6 +840,7 @@ class SobelFinder(AmplitudeFinder):
                                Item('maxG'),
                                Item('n_iterations_dilation'),
                                Item('gaussian_sigma'),
+                               Item('line_strength_thresh'),
                                Item('update_plots'),
                                Item('bg_viewer',show_label=False),
                                Item('a1_viewer',show_label=False),
@@ -991,12 +993,18 @@ class SobelFinder(AmplitudeFinder):
             #print idx_left
             idx_right = np.argmax(right_vals)
 
-            left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
-                                                                                 idx_left)
-            right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
-                                                                                  idx_right)
-            left_angle_degrees = left_angle_radians*R2D
-            right_angle_degrees = right_angle_radians*R2D
+            # do we have enough line strength?
+            n_pts_left = left_vals[idx_left]
+            if n_pts_left >= self.line_strength_thresh:
+                left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
+                                                                                     idx_left)
+                left_angle_degrees = left_angle_radians*R2D
+
+            n_pts_right = right_vals[idx_right]
+            if n_pts_right >= self.line_strength_thresh:
+                right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
+                                                                                      idx_right)
+                right_angle_degrees = right_angle_radians*R2D
         return left_angle_degrees, right_angle_degrees
 
 class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
