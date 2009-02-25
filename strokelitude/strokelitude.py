@@ -17,6 +17,7 @@ import wx
 import warnings, time, threading
 
 import numpy as np
+import scipy.ndimage
 import cairo
 import Queue
 import os, warnings, pickle
@@ -121,6 +122,8 @@ class MaskData(traits.HasTraits):
         ])
 
     left_mat = traits.Property(depends_on=['quads_left'])
+    left_mat_half = traits.Property(depends_on=['quads_left'])
+    left_mat_half_float32 = traits.Property(depends_on=['quads_left'])
 
     mean_quad_angles_deg = traits.Property(depends_on=[
         'alpha', 'beta', 'nbins'])
@@ -130,6 +133,8 @@ class MaskData(traits.HasTraits):
         'rotation','translation','view_from_below',
         ])
     right_mat = traits.Property(depends_on=['quads_right'])
+    right_mat_half = traits.Property(depends_on=['quads_right'])
+    right_mat_half_float32 = traits.Property(depends_on=['quads_right'])
 
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
@@ -210,11 +215,51 @@ class MaskData(traits.HasTraits):
         return result
 
     @traits.cached_property
+    def _get_left_mat_half(self):
+        result = []
+        for quad in self.quads_left:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy,
+                                                         half=True)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
+    def _get_left_mat_half_float32(self):
+        result = []
+        for quad in self.quads_left:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy,
+                                                         half=True,float32=True)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
     def _get_right_mat(self):
         result = []
         for quad in self.quads_right:
             fi_roi, left, bottom = quad2fastimage_offset(quad,
                                                          self.maxx,self.maxy)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
+    def _get_right_mat_half(self):
+        result = []
+        for quad in self.quads_right:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy,
+                                                         half=True)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
+    def _get_right_mat_half_float32(self):
+        result = []
+        for quad in self.quads_right:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy,
+                                                         half=True,float32=True)
             result.append( (fi_roi, left, bottom) )
         return result
 
@@ -335,8 +380,11 @@ class MaskData(traits.HasTraits):
         linesegs.append( verts.T.ravel() )
         return linesegs
 
-def quad2fastimage_offset(quad,width,height,debug_count=0):
+def quad2fastimage_offset(quad,width,height,debug_count=0,half=False,float32=False):
     """convert a quad to an image vector"""
+    if half:
+        width = width*0.5
+        height = height*0.5
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
                                  width, height)
     ctx = cairo.Context(surface)
@@ -347,14 +395,21 @@ def quad2fastimage_offset(quad,width,height,debug_count=0):
 
     x0=quad[0]
     y0=quad[1]
+    if half:
+        x0 = x0*0.5
+        y0 = y0*0.5
     ctx.move_to(x0,y0)
     xmin = int(np.floor(x0))
     xmax = int(np.ceil(x0+1))
     ymin = int(np.floor(y0))
     ymax = int(np.ceil(y0+1))
 
-    for (x,y) in zip(quad[2::2],
-                     quad[3::2]):
+    xs = quad[2::2]
+    ys = quad[3::2]
+    if half:
+        xs = xs*0.5
+        ys = ys*0.5
+    for (x,y) in zip(xs,ys):
         ctx.line_to(x,y)
         xmin = min(int(np.floor(x)),xmin)
         xmax = max(int(np.ceil(x+1)),xmax)
@@ -379,7 +434,11 @@ def quad2fastimage_offset(quad,width,height,debug_count=0):
         im = scipy.misc.pilutil.toimage(arr)
         im.save(fname)
     arr = arr[:,:,0] # only red channel
-
+    if float32:
+        arr = arr.astype(np.float32)
+    else:
+        # uint8
+        arr = np.array(arr,copy=True)
     # Now, crop to only region of interest
     roi = arr[ymin:ymax,xmin:xmax]
     fi_roi = FastImage.asfastimage(roi)
@@ -765,6 +824,179 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
         if self.mask_dirty:
             self.processing_enabled = False
 
+class SobelFinder(AmplitudeFinder):
+    processing_enabled = traits.Bool(False)
+    mask_thresh = traits.Int(100)
+    maxG = traits.Int(15)
+    n_iterations_dilation = traits.Int(10)
+    gaussian_sigma = traits.Float(3.0)
+    update_plots = traits.Bool(False)
+    bg_viewer = traits.Instance(PopUpPlot)
+    a1_viewer = traits.Instance(PopUpPlot)
+
+    traits_view = View( Group( Item('processing_enabled'),
+                               Item('mask_thresh'),
+                               Item('maxG'),
+                               Item('n_iterations_dilation'),
+                               Item('gaussian_sigma'),
+                               Item('update_plots'),
+                               Item('bg_viewer',show_label=False),
+                               Item('a1_viewer',show_label=False),
+                               ))
+    def __init__(self,*args,**kwargs):
+        super(SobelFinder,self).__init__(*args,**kwargs)
+        self.bg_viewer = PopUpPlot()
+        if 1:
+            # a temporary initial background image
+            image = np.zeros((640,480), dtype=np.uint8)
+
+            # Create a plot data obect and give it this data
+            self.bg_pd = ArrayPlotData()
+            self.bg_pd.set_data("imagedata", image)
+            # Create the plot
+            bg_plot = Plot(self.bg_pd, default_origin="top left")
+            bg_plot.x_axis.orientation = "top"
+            colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
+            bg_plot.img_plot("imagedata",colormap=colormap)[0]
+
+            bg_plot.padding = 30
+            bg_plot.bgcolor = "white"
+
+            # Attach some tools to the plot
+            bg_plot.tools.append(PanTool(bg_plot,
+                                         constrain_key="shift"))
+            bg_plot.overlays.append(ZoomTool(component=bg_plot,
+                                             tool_mode="box", always_on=False))
+
+            self.bg_viewer.plot = bg_plot
+        self.a1_viewer = PopUpPlot()
+        if 1:
+            # a temporary initial background image
+            image = np.zeros((640,480), dtype=np.uint8)
+
+            # Create a plot data obect and give it this data
+            self.a1_pd = ArrayPlotData()
+            self.a1_pd.set_data("imagedata", image)
+            # Create the plot
+            a1_plot = Plot(self.a1_pd, default_origin="top left")
+            a1_plot.x_axis.orientation = "top"
+            colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
+            a1_plot.img_plot("imagedata",colormap=colormap)[0]
+
+            a1_plot.padding = 30
+            a1_plot.bgcolor = "white"
+
+            # Attach some tools to the plot
+            a1_plot.tools.append(PanTool(a1_plot,
+                                         constrain_key="shift"))
+            a1_plot.overlays.append(ZoomTool(component=a1_plot,
+                                             tool_mode="box", always_on=False))
+
+            self.a1_viewer.plot = a1_plot
+
+    def process_frame(self,buf,buf_offset,timestamp,framenumber):
+        """do the work"""
+
+        left_angle_degrees = np.nan
+        right_angle_degrees = np.nan
+
+        if self.processing_enabled:
+            frame = np.asarray(buf)
+
+            downsampled = np.array(frame[::2,::2])
+            bad_cond = (downsampled < self.mask_thresh).astype(np.uint8)
+            if True:
+                fi_bad_cond = FastImage.asfastimage(bad_cond)
+                # use ROI to prevent edge effects
+                h,w = bad_cond.shape
+                fi_bad_cond_roi = fi_bad_cond.roi(1,1,FastImage.Size(w-2,h-2))
+                fi_bad_cond_roi.dilate3x3_inplace(fi_bad_cond_roi.size,n_iter=self.n_iterations_dilation)
+                bad_cond = np.asarray(fi_bad_cond)>0
+            else:
+                if self.n_iterations_dilation:
+                    bad_cond = scipy.ndimage.binary_dilation(bad_cond,iterations=self.n_iterations_dilation)
+
+            if self.update_plots:
+                self.bg_pd.set_data("imagedata", bad_cond*255)
+                self.bg_viewer.plot.request_redraw()
+                    #print 'plotting range %f-%f'%(np.min(bad_cond),np.max(bad_cond))
+
+            # blur
+            if self.gaussian_sigma != 0.0:
+                #blurred = scipy.ndimage.gaussian_filter(f32, self.gaussian_sigma)
+                if 1:
+                    f32 = downsampled.astype(np.float32)
+                    blurred = scipy.ndimage.gaussian_filter1d(f32, self.gaussian_sigma, axis=1)
+                    blurred_fi = FastImage.asfastimage(blurred)
+                else:
+                    fi_downsampled = FastImage.asfastimage(downsampled)
+                    blurred_fi_8u = fi_downsampled.gauss5x5(fi_downsampled.size)
+                    #blurred_8u = np.asarray(blurred_fi_8u)
+                    blurred_fi = blurred_fi_8u.get_32f_copy(blurred_fi_8u.size)
+            else:
+                f32 = downsampled.astype(np.float32)
+                blurred = f32
+                blurred_fi = FastImage.asfastimage(blurred)
+
+            G_x = blurred_fi.sobel_horiz(blurred_fi.size)
+
+            # square result (abs() would probably work, too)
+            G_x.toself_square(G_x.size)
+            npG_x = np.asarray(G_x)
+            npG_x[bad_cond] = 0 # no edges here -- below self.mask_thresh
+            binarize=True
+            if binarize:
+                #maxG = np.max(npG_x)*0.2
+                #maxG = 100.0
+                maxG = self.maxG
+                binG = (npG_x > maxG).astype(np.uint8)
+                if self.update_plots:
+                    #print 'np.min(binG),np.max(binG)',np.min(binG),np.max(binG)
+                    self.a1_pd.set_data("imagedata", binG*255)
+                    self.a1_viewer.plot.request_redraw()
+            else:
+                if self.update_plots:
+                    self.a1_pd.set_data("imagedata", npG_x)
+                    self.a1_viewer.plot.request_redraw()
+            if 0:
+                # no edges here
+                npG_x[0,:]=0
+                npG_x[-1,:]=0
+                npG_x[:,0]=0
+                npG_x[:,-1]=0
+            #G_x_uint8 = (npG_x).astype(np.uint8)
+            #print 'G_x[:5,:5]',npG_x[:5,:5]
+            #print 'np.max(G_x)',np.max(npG_x)
+            if binarize:
+                left_mat_half = self.strokelitude_instance.maskdata.left_mat_half
+                right_mat_half = self.strokelitude_instance.maskdata.right_mat_half
+
+                fi_binG = FastImage.asfastimage(binG)
+                left_vals  = compute_sparse_mult(left_mat_half,fi_binG)
+                right_vals = compute_sparse_mult(right_mat_half,fi_binG)
+            else:
+                left_mat_half = self.strokelitude_instance.maskdata.left_mat_half_float32
+                right_mat_half = self.strokelitude_instance.maskdata.right_mat_half_float32
+
+                fi_G_x = FastImage.asfastimage(npG_x)
+                left_vals  = compute_sparse_mult(left_mat_half,fi_G_x)
+                right_vals = compute_sparse_mult(right_mat_half,fi_G_x)
+            ## left_vals  = compute_sparse_mult(left_mat_half,fi_G_x_uint8)
+            ## right_vals = compute_sparse_mult(right_mat_half,fi_G_x_uint8)
+
+            #print 'left_vals',left_vals
+            idx_left = np.argmax(left_vals)
+            #print idx_left
+            idx_right = np.argmax(right_vals)
+
+            left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
+                                                                                 idx_left)
+            right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
+                                                                                  idx_right)
+            left_angle_degrees = left_angle_radians*R2D
+            right_angle_degrees = right_angle_radians*R2D
+        return left_angle_degrees, right_angle_degrees
+
 class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
     plugin_name = traits.Str('-=| strokelitude |=-')
 
@@ -859,6 +1091,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
         if 1:
             # load analysis methods
+            self.avail_amplitude_methods.append(SobelFinder())
             self.avail_amplitude_methods.append(BackgroundSubtractionDotProductFinder())
             self.current_amplitude_method = self.avail_amplitude_methods[0]
             for method in self.avail_amplitude_methods:
