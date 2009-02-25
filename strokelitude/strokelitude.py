@@ -76,6 +76,14 @@ def load_plugins():
     plugins = [PluginClass() for PluginClass in PluginClasses]
     return plugins
 
+def compute_hough_lookup_table(x0,y0,gamma,sign,width,height,frac=1):
+    x = (np.arange(width)[::frac]-x0)
+    y = (np.arange(height)[::frac]-y0)[:,np.newaxis]
+    angle_image_coords = np.arctan2(y,x)
+    angle_wing_coords = sign*(angle_image_coords - gamma) - np.pi/2 # pi/2 is to shift interesting range from 90-270
+    angle_wing_coords = np.mod(angle_wing_coords,2*np.pi) # 0 <= result < 2*pi
+    return angle_wing_coords
+
 class BufferAllocator:
     def __call__(self, w, h):
         return FastImage.FastImage8u(FastImage.Size(w,h))
@@ -120,6 +128,8 @@ class MaskData(traits.HasTraits):
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
         'rotation','translation','view_from_below',
         ])
+    hough_left = traits.Property(depends_on=['quads_left'])
+    hough_right = traits.Property(depends_on=['quads_right'])
 
     left_mat = traits.Property(depends_on=['quads_left'])
     left_mat_half = traits.Property(depends_on=['quads_left'])
@@ -233,6 +243,61 @@ class MaskData(traits.HasTraits):
                                                          frac=4)
             result.append( (fi_roi, left, bottom) )
         return result
+
+    @traits.cached_property
+    def _get_hough_left(self):
+        x,y = np.dot(self.rotation,self._get_wingsplit_translation('left')) + self.translation
+        sign = 1
+        hough_lut = compute_hough_lookup_table(x,y,self.gamma*D2R,sign,self.maxx,self.maxy,frac=4)
+        scale = 255.0/(2*np.pi)
+        hough_lut *= scale
+        #return hough_lut
+        hough_lut = hough_lut.astype(np.uint8)
+        hough_lut_fi = FastImage.asfastimage(hough_lut)
+        # take only the region where the quads of the mask extend
+        # XXX could make the non-square...
+        left,bottom,size = self._calc_lbs(self.quads_left,frac=4)
+        hough_lut_fi_roi = hough_lut_fi.roi( left, bottom, size )
+        result = (hough_lut_fi_roi, left, bottom)
+        return result
+
+    @traits.cached_property
+    def _get_hough_right(self):
+        x,y = np.dot(self.rotation,self._get_wingsplit_translation('right')) + self.translation
+        sign = -1
+        hough_lut = compute_hough_lookup_table(x,y,self.gamma*D2R,sign,self.maxx,self.maxy,frac=4)
+        scale = 255.0/(2*np.pi)
+        hough_lut *= scale
+        #return hough_lut
+        hough_lut = hough_lut.astype(np.uint8)
+        hough_lut_fi = FastImage.asfastimage(hough_lut)
+        # take only the region where the quads of the mask extend
+        # XXX could make the non-square...
+        left,bottom,size = self._calc_lbs(self.quads_right,frac=4)
+        print 'left,bottom,size',left,bottom,size
+        hough_lut_fi_roi = hough_lut_fi.roi( left, bottom, size )
+        result = (hough_lut_fi_roi, left, bottom)
+        return result
+
+    def _calc_lbs(self,quads,frac=1):
+        allx = [quad[0::2] for quad in quads]
+        ally = [quad[1::2] for quad in quads]
+        allx = np.hstack(allx)
+        ally = np.hstack(ally)
+        x0 = np.min(allx)
+        x1 = np.max(allx)
+        y0 = np.min(ally)
+        y1 = np.max(ally)
+
+        x0 = max(0,x0)
+        y0 = max(0,y0)
+        left = int(round(x0/frac))
+        bottom = int(round(y0/frac))
+
+        x1 = min(self.maxx,x1)
+        y1 = min(self.maxy,y1)
+        size = FastImage.Size(int(round((x1-x0)/frac)), int(round((y1-y0)/frac)))
+        return left, bottom, size
 
     @traits.cached_property
     def _get_right_mat(self):
@@ -379,6 +444,10 @@ class MaskData(traits.HasTraits):
         verts = np.dot(self.rotation, verts) + self.translation
         linesegs.append( verts.T.ravel() )
         return linesegs
+
+def quad2fastimage_offset(quad,width,height,x,y,gamma,sign,frac=1):
+    """convert a quad to an image vector"""
+
 
 def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     """convert a quad to an image vector"""
@@ -826,14 +895,16 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
 class SobelFinder(AmplitudeFinder):
     processing_enabled = traits.Bool(False)
-    mask_thresh = traits.Int(100)
-    maxG = traits.Int(15)
+    mask_thresh = traits.Int(150)
+    maxG = traits.Int(400)
     n_iterations_dilation = traits.Int(10)
     gaussian_sigma = traits.Float(3.0)
     line_strength_thresh = traits.Float(20.0)
     update_plots = traits.Bool(False)
     bg_viewer = traits.Instance(PopUpPlot)
     a1_viewer = traits.Instance(PopUpPlot)
+    a2_viewer = traits.Instance(PopUpPlot)
+    a3_viewer = traits.Instance(PopUpPlot)
 
     traits_view = View( Group( Item('processing_enabled'),
                                Item('mask_thresh'),
@@ -844,19 +915,21 @@ class SobelFinder(AmplitudeFinder):
                                Item('update_plots'),
                                Item('bg_viewer',show_label=False),
                                Item('a1_viewer',show_label=False),
+                               Item('a2_viewer',show_label=False),
+                               Item('a3_viewer',show_label=False),
                                ))
     def __init__(self,*args,**kwargs):
         super(SobelFinder,self).__init__(*args,**kwargs)
         self.bg_viewer = PopUpPlot()
         if 1:
             # a temporary initial background image
-            image = np.zeros((640,480), dtype=np.uint8)
+            image = np.zeros((480,640), dtype=np.uint8)
 
             # Create a plot data obect and give it this data
             self.bg_pd = ArrayPlotData()
             self.bg_pd.set_data("imagedata", image)
             # Create the plot
-            bg_plot = Plot(self.bg_pd, default_origin="top left")
+            bg_plot = Plot(self.bg_pd, default_origin="bottom left")
             bg_plot.x_axis.orientation = "top"
             colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
             bg_plot.img_plot("imagedata",colormap=colormap)[0]
@@ -874,13 +947,13 @@ class SobelFinder(AmplitudeFinder):
         self.a1_viewer = PopUpPlot()
         if 1:
             # a temporary initial background image
-            image = np.zeros((640,480), dtype=np.uint8)
+            image = np.zeros((480,640), dtype=np.uint8)
 
             # Create a plot data obect and give it this data
             self.a1_pd = ArrayPlotData()
             self.a1_pd.set_data("imagedata", image)
             # Create the plot
-            a1_plot = Plot(self.a1_pd, default_origin="top left")
+            a1_plot = Plot(self.a1_pd, default_origin="bottom left")
             a1_plot.x_axis.orientation = "top"
             colormap = default_colormaps.gray(DataRange1D(low=0,high=255))
             a1_plot.img_plot("imagedata",colormap=colormap)[0]
@@ -895,12 +968,61 @@ class SobelFinder(AmplitudeFinder):
                                              tool_mode="box", always_on=False))
 
             self.a1_viewer.plot = a1_plot
+        self.a2_viewer = PopUpPlot()
+        if 1:
+            # a temporary initial background image
+            image = np.zeros((480,640), dtype=np.float)
+
+            # Create a plot data obect and give it this data
+            self.a2_pd = ArrayPlotData()
+            self.a2_pd.set_data("imagedata", image)
+            # Create the plot
+            a2_plot = Plot(self.a2_pd, default_origin="bottom left")
+            a2_plot.x_axis.orientation = "top"
+            colormap = default_colormaps.jet(DataRange1D(low=0,high=255))
+            a2_plot.img_plot("imagedata",colormap=colormap)[0]
+
+            a2_plot.padding = 30
+            a2_plot.bgcolor = "white"
+
+            # Attach some tools to the plot
+            a2_plot.tools.append(PanTool(a2_plot,
+                                         constrain_key="shift"))
+            a2_plot.overlays.append(ZoomTool(component=a2_plot,
+                                             tool_mode="box", always_on=False))
+
+            self.a2_viewer.plot = a2_plot
+        self.a3_viewer = PopUpPlot()
+        if 1:
+            # a temporary initial background image
+            image = np.zeros((480,640), dtype=np.float)
+
+            # Create a plot data obect and give it this data
+            self.a3_pd = ArrayPlotData()
+            self.a3_pd.set_data("imagedata", image)
+            # Create the plot
+            a3_plot = Plot(self.a3_pd, default_origin="bottom left")
+            a3_plot.x_axis.orientation = "top"
+            colormap = default_colormaps.jet(DataRange1D(low=0,high=255))
+            a3_plot.img_plot("imagedata",colormap=colormap)[0]
+
+            a3_plot.padding = 30
+            a3_plot.bgcolor = "white"
+
+            # Attach some tools to the plot
+            a3_plot.tools.append(PanTool(a3_plot,
+                                         constrain_key="shift"))
+            a3_plot.overlays.append(ZoomTool(component=a3_plot,
+                                             tool_mode="box", always_on=False))
+
+            self.a3_viewer.plot = a3_plot
 
     def process_frame(self,buf,buf_offset,timestamp,framenumber):
         """do the work"""
 
         left_angle_degrees = np.nan
         right_angle_degrees = np.nan
+
 
         if self.processing_enabled:
             frame = np.asarray(buf)
@@ -921,6 +1043,19 @@ class SobelFinder(AmplitudeFinder):
                     bad_cond = scipy.ndimage.binary_dilation(bad_cond,iterations=self.n_iterations_dilation)
 
             if self.update_plots:
+
+                if 1:
+                    tmp = self.strokelitude_instance.maskdata.hough_right
+                    #tmp = self.strokelitude_instance.maskdata.hough_left
+                    (hough_lut_fi_roi, left, bottom) = tmp
+                    Hfull=np.zeros((480//4,640//4),dtype=np.uint8)
+                    fullfi = FastImage.asfastimage(Hfull)
+                    loc = fullfi.roi(left,bottom,hough_lut_fi_roi.size)
+                    hough_lut_fi_roi.get_8u_copy_put(loc,hough_lut_fi_roi.size)
+
+                    self.a2_pd.set_data("imagedata", Hfull)
+                    self.a2_viewer.plot.request_redraw()
+
                 self.bg_pd.set_data("imagedata", bad_cond*255)
                 self.bg_viewer.plot.request_redraw()
                     #print 'plotting range %f-%f'%(np.min(bad_cond),np.max(bad_cond))
@@ -943,9 +1078,12 @@ class SobelFinder(AmplitudeFinder):
                 blurred_fi = FastImage.asfastimage(blurred)
 
             G_x = blurred_fi.sobel_horiz(blurred_fi.size)
+            G_y = blurred_fi.sobel_vert(blurred_fi.size)
 
             # square result (abs() would probably work, too)
-            G_x.toself_square(G_x.size)
+            G_x.toself_square(G_x.size)         # G_x = G_x**2
+            G_y.toself_square(G_y.size)         # G_y = G_y**2
+            G_x.toself_add(G_y,G_y.size) # G_x = G_x + G_y
             npG_x = np.asarray(G_x)
             npG_x[bad_cond] = 0 # no edges here -- below self.mask_thresh
             binarize=True
@@ -971,40 +1109,92 @@ class SobelFinder(AmplitudeFinder):
             #G_x_uint8 = (npG_x).astype(np.uint8)
             #print 'G_x[:5,:5]',npG_x[:5,:5]
             #print 'np.max(G_x)',np.max(npG_x)
-            if binarize:
-                left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
-                right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
 
+            if 1:
                 fi_binG = FastImage.asfastimage(binG)
-                left_vals  = compute_sparse_mult(left_mat_quarter,fi_binG)
-                right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
-            else:
-                left_mat_half = self.strokelitude_instance.maskdata.left_mat_half_float32
-                right_mat_half = self.strokelitude_instance.maskdata.right_mat_half_float32
 
-                fi_G_x = FastImage.asfastimage(npG_x)
-                left_vals  = compute_sparse_mult(left_mat_half,fi_G_x)
-                right_vals = compute_sparse_mult(right_mat_half,fi_G_x)
-            ## left_vals  = compute_sparse_mult(left_mat_half,fi_G_x_uint8)
-            ## right_vals = compute_sparse_mult(right_mat_half,fi_G_x_uint8)
+                tmp = self.strokelitude_instance.maskdata.hough_left
+                (hough_lut_fi_roi, left, bottom) = tmp
+                local_view = fi_binG.roi( left, bottom, hough_lut_fi_roi.size )
+                npview = np.asarray(local_view)
+                N_pixels = np.sum(npview)
 
-            #print 'left_vals',left_vals
-            idx_left = np.argmax(left_vals)
-            #print idx_left
-            idx_right = np.argmax(right_vals)
+                if 0:
+                    self.a3_pd.set_data("imagedata", npview)
+                    self.a3_viewer.plot.request_redraw()
 
-            # do we have enough line strength?
-            n_pts_left = left_vals[idx_left]
-            if n_pts_left >= self.line_strength_thresh:
-                left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
-                                                                                     idx_left)
+                    print
+                    print binG.shape
+                    print 'binG[:5,:5]',binG[:5,:5]
+                    print 'np.sum(binG)',np.sum(binG)
+                    print 'left,bottom,hough_lut_fi_roi.size',left,bottom,hough_lut_fi_roi.size
+                    print 'N_pixels',N_pixels
+                    print 'npview.shape',npview.shape
+                    print 'np.asarray(hough_lut_fi_roi)[:5,:5]',np.asarray(hough_lut_fi_roi)[:5,:5]
+                bigsum = local_view.dot(hough_lut_fi_roi, local_view.size)
+                mean = bigsum/N_pixels
+                left_angle_radians = (mean/255.0*2*np.pi)-(np.pi)#/2.0)
                 left_angle_degrees = left_angle_radians*R2D
 
-            n_pts_right = right_vals[idx_right]
-            if n_pts_right >= self.line_strength_thresh:
-                right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
-                                                                                      idx_right)
+
+                # RIGHT
+                tmp = self.strokelitude_instance.maskdata.hough_right
+                (hough_lut_fi_roi, left, bottom) = tmp
+                local_view = fi_binG.roi( left, bottom, hough_lut_fi_roi.size )
+                npview = np.asarray(local_view)
+                N_pixels = np.sum(npview)
+
+                if 0:
+                    self.a3_pd.set_data("imagedata", npview)
+                    self.a3_viewer.plot.request_redraw()
+
+                    print
+                    print binG.shape
+                    print 'binG[:5,:5]',binG[:5,:5]
+                    print 'np.sum(binG)',np.sum(binG)
+                    print 'left,bottom,hough_lut_fi_roi.size',left,bottom,hough_lut_fi_roi.size
+                    print 'N_pixels',N_pixels
+                    print 'npview.shape',npview.shape
+                    print 'np.asarray(hough_lut_fi_roi)[:5,:5]',np.asarray(hough_lut_fi_roi)[:5,:5]
+                bigsum = local_view.dot(hough_lut_fi_roi, local_view.size)
+                mean = bigsum/N_pixels
+                right_angle_radians = (mean/255.0*2*np.pi)-(np.pi)#/2.0)
                 right_angle_degrees = right_angle_radians*R2D
+            else:
+                if binarize:
+                    left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
+                    right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
+
+                    fi_binG = FastImage.asfastimage(binG)
+                    left_vals  = compute_sparse_mult(left_mat_quarter,fi_binG)
+                    right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
+                else:
+                    left_mat_half = self.strokelitude_instance.maskdata.left_mat_half_float32
+                    right_mat_half = self.strokelitude_instance.maskdata.right_mat_half_float32
+
+                    fi_G_x = FastImage.asfastimage(npG_x)
+                    left_vals  = compute_sparse_mult(left_mat_half,fi_G_x)
+                    right_vals = compute_sparse_mult(right_mat_half,fi_G_x)
+                ## left_vals  = compute_sparse_mult(left_mat_half,fi_G_x_uint8)
+                ## right_vals = compute_sparse_mult(right_mat_half,fi_G_x_uint8)
+
+                #print 'left_vals',left_vals
+                idx_left = np.argmax(left_vals)
+                #print idx_left
+                idx_right = np.argmax(right_vals)
+
+                # do we have enough line strength?
+                n_pts_left = left_vals[idx_left]
+                if n_pts_left >= self.line_strength_thresh:
+                    left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
+                                                                                         idx_left)
+                    left_angle_degrees = left_angle_radians*R2D
+
+                n_pts_right = right_vals[idx_right]
+                if n_pts_right >= self.line_strength_thresh:
+                    right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
+                                                                                          idx_right)
+                    right_angle_degrees = right_angle_radians*R2D
         return left_angle_degrees, right_angle_degrees
 
 class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
@@ -1189,7 +1379,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             self.stream_ain_table   = self.streaming_file.createTable(
                 self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
                 "AIN data",expectedrows=100000)
-            self.stream_ain_table.attrs.channel_names = self.timestamp_modeler.channel_names
+            names = self.timestamp_modeler.channel_names
+            print 'saving analog channels',names
+            self.stream_ain_table.attrs.channel_names = names
 
             self.stream_time_data_table = self.streaming_file.createTable(
                 self.streaming_file.root,'time_data',TimeDataDescription,
