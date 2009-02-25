@@ -444,10 +444,8 @@ class AmplitudeFinder(traits.HasTraits):
         """do the work"""
         left_angle_degrees = np.nan
         right_angle_degrees = np.nan
-        draw_points = [] #  [ (x,y) ]
-        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
-        return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+        return left_angle_degrees, right_angle_degrees
 
 class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
     mask_dirty = traits.Bool(False) # let __init__ set True
@@ -485,7 +483,6 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
         self.new_bg_image_lock = threading.Lock()
         self.new_bg_image = None
         self.recomputing_lock = threading.Lock()
-        self.drawsegs_cache = None
 
         self.background_viewer = PopUpPlot()
         self.live_data_plot = LiveDataPlot()
@@ -606,14 +603,12 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
     def process_frame(self,buf,buf_offset,timestamp,framenumber):
         """do the work"""
-        draw_points = [] #  [ (x,y) ]
-        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
         left_angle_degrees = np.nan
         right_angle_degrees = np.nan
 
         have_lock = self.recomputing_lock.acquire(False) # don't block
         if not have_lock:
-            return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+            return left_angle_degrees, right_angle_degrees
 
         try:
             command = None
@@ -645,8 +640,6 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
             # XXX naughty to cross thread boundary to get enabled_box value, too
             if (self.processing_enabled and not self.mask_dirty):
                 if 1:
-                    self.drawsegs_cache = []
-
                     h,w = this_image.shape
                     if not (self.width==w and self.height==h):
                         raise NotImplementedError('need to support ROI')
@@ -704,10 +697,6 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
                                                                                             interp_idx)
                             results.append( angle_radians*R2D ) # keep results in degrees
 
-                            # draw lines
-                            this_seg = self.strokelitude_instance.maskdata.get_span_lineseg(side,angle_radians)
-                            draw_linesegs.extend(this_seg)
-                            self.drawsegs_cache.extend( this_seg )
                         else:
                             results.append( np.nan )
 
@@ -725,16 +714,10 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
                     # trigger call to self.OnDataReady
                     wx.PostEvent(self.strokelitude_instance.frame, event)
-                else:
-                    if self.drawsegs_cache is not None:
-                        draw_linesegs.extend( self.drawsegs_cache )
-
-            else:
-                self.drawsegs_cache = None
 
         finally:
             self.recomputing_lock.release()
-        return left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs
+        return left_angle_degrees, right_angle_degrees
 
     def _recompute_mask_fired(self):
         with self.recomputing_lock:
@@ -1044,6 +1027,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         class.
 
         """
+        draw_points = [] #  [ (x,y) ]
+        draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
         if self.timestamp_modeler is not None:
             trigger_timestamp = self.timestamp_modeler.register_frame(
@@ -1052,7 +1037,13 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             trigger_timestamp = None
 
         tmp = self.current_amplitude_method.process_frame(buf,buf_offset,timestamp,framenumber)
-        left_angle_degrees, right_angle_degrees, draw_points, draw_linesegs = tmp
+        left_angle_degrees, right_angle_degrees = tmp
+
+        # draw lines
+        for side, angle_degrees in [('left',left_angle_degrees),
+                                    ('right',right_angle_degrees)]:
+            this_seg = self.maskdata.get_span_lineseg(side,angle_degrees*D2R)
+            draw_linesegs.extend(this_seg)
 
         processing_timestamp = time.time()
         if trigger_timestamp is not None:
