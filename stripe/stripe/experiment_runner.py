@@ -17,6 +17,7 @@ import remote_traits
 import strokelitude.plugin as strokelitude_plugin_module
 import multiprocessing
 import multiprocessing.queues
+import scipy.interpolate
 
 import ER_data_format
 
@@ -46,6 +47,12 @@ class StateMachine(traits.HasTraits):
         self.stimulus_timeseries_queue = stimulus_timeseries_queue
         self.display_text_queue = display_text_queue
 
+        self.save_sequence = False
+        self.save_sequence_t_start = None
+        self.saved_sequence_times = []
+        self.saved_sequence_positions = []
+        self.saved_sequence_vels = []
+
     def _current_state_changed(self):
         # see ER_data_format.py
         self.stimulus_state_queue.put( (time.time(),self.current_state) )
@@ -60,18 +67,43 @@ class StateMachine(traits.HasTraits):
             print 'got message',incoming_message
             if incoming_message.startswith('CL '):
                 parts = incoming_message.split()
-                tmp, gain, offset, duration_sec = parts
-                gain, offset, duration_sec = map(float,
-                                                 (gain,offset,duration_sec))
+                tmp, gain, offset, duration_sec, save_sequence = parts
+                self.gain = float(gain)
+                self.offset = eval(offset) # could instantiate SinusoidalBias class
+                duration_sec = float(duration_sec)
+                self.save_sequence = bool(int(save_sequence))
                 self.current_state = incoming_message
-                self.gain = gain
-                self.offset = offset
                 now = time.time()
                 self.current_state_finished_time = now+duration_sec
                 print 'switching to closed loop'
+                if save_sequence:
+                    self.save_sequence_t_start = None
+                    self.saved_sequence_times = []
+                    self.saved_sequence_positions = []
+                    self.saved_sequence_vels = []
+                    print 'saving sequence for replay (cleared any old saved sequence)'
                 self.display_text_queue.put(
-                    'closed loop for %.1f sec (gain=%.1f, offset=%.1f)'%(
+                    'closed loop for %.1f sec (gain=%.1f, offset=%s)'%(
                     duration_sec, self.gain, self.offset))
+            elif incoming_message == 'REPLAY':
+                self.saved_sequence_times = np.array(self.saved_sequence_times)
+                self.saved_sequence_vels = np.array(self.saved_sequence_vels)
+                print 'replay times:',self.saved_sequence_times[0],self.saved_sequence_times[-1]
+                self.vel_interp = scipy.interpolate.interp1d( self.saved_sequence_times,
+                                                              self.saved_sequence_vels )
+
+                # interpolation is slightly tricky here...
+                replay_rad = np.unwrap(np.array(self.saved_sequence_positions)*D2R)
+                self.pos_interp = scipy.interpolate.interp1d( self.saved_sequence_times,
+                                                              replay_rad )
+
+                duration_sec = self.saved_sequence_times[-1]
+                now = time.time()
+                self.current_state_finished_time = now+duration_sec
+                self.save_sequence_t_start = None
+                self.current_state = incoming_message
+                self.display_text_queue.put(
+                    'replaying saved stimulus')
             elif incoming_message.startswith('OLs '):
                 parts = incoming_message.split()
                 tmp, start_pos_deg, stop_pos_deg, velocity_dps = parts
@@ -104,20 +136,60 @@ class StateMachine(traits.HasTraits):
                 outgoing_message = 'done '+self.current_state
                 self.from_state_machine.put(outgoing_message)
                 self.current_state = 'offline'
+                self.save_sequence = False
 
-        # update self.vel every frame so that changes in gain and offset noticed
-        vel_dps = delta_degrees*self.gain + self.offset
-
-        # Compute stripe position.
         now = time.time()
-        dt = now-self.last_time
-        self.last_time = now
 
-        self.stripe_pos_degrees += vel_dps*dt
-        # put in range -180 <= angle < 180
-        self.stripe_pos_degrees = (self.stripe_pos_degrees+180)%360-180
+        if self.current_state == 'REPLAY':
+            if self.save_sequence_t_start is None:
+                self.save_sequence_t_start = now
+            seq_t = now-self.save_sequence_t_start
+            vel_dps = self.vel_interp(seq_t)
+            pos_rad_wrapped = self.pos_interp(seq_t)
+            self.stripe_pos_degrees = (pos_rad_wrapped*R2D+180)%360-180
+        else:
+
+            if isinstance(self.offset,SinusoidalBias):
+                offset = self.offset.update(now)
+            else:
+                offset = self.offset
+
+            # update self.vel every frame so that changes in gain and offset noticed
+            vel_dps = delta_degrees*self.gain + offset
+
+            # Compute stripe position.
+            dt = now-self.last_time
+            self.last_time = now
+
+            self.stripe_pos_degrees += vel_dps*dt
+            # put in range -180 <= angle < 180
+            self.stripe_pos_degrees = (self.stripe_pos_degrees+180)%360-180
+
+            if self.save_sequence:
+                if self.save_sequence_t_start is None:
+                    self.save_sequence_t_start = now
+                seq_t = now-self.save_sequence_t_start
+                self.saved_sequence_times.append( seq_t )
+                self.saved_sequence_positions.append( self.stripe_pos_degrees )
+                self.saved_sequence_vels.append( vel_dps )
 
         return self.stripe_pos_degrees, vel_dps
+
+class SinusoidalBias:
+    def __init__(self, freq_hz=None, amplitude=None):
+        self.freq_hz = freq_hz
+        self.amplitude = amplitude
+        self.start_t = None
+    def __repr__(self):
+        return 'SinusoidalBias(freq_hz=%s,amplitude=%s)'%(repr(self.freq_hz),
+                                                          repr(self.amplitude))
+    def update(self,now=None):
+        if self.start_t is None:
+            self.start_t = now
+        t = now-self.start_t
+        phase = t*(2*np.pi*self.freq_hz)
+        val = self.amplitude*np.sin(phase)
+        return val
 
 class StripeControlRemoteProcess:
     """Runs in the same process as the user's experiment script"""
@@ -125,10 +197,12 @@ class StripeControlRemoteProcess:
         self.to_state_machine = to_state_machine
         self.from_state_machine = from_state_machine
         self.display_text_queue = display_text_queue
+    def set_progress(self, n_done, total_repititions ):
+        print '%d (of %d) done'
     def show_string( self, msg ):
         self.display_text_queue.put(msg)
-    def closed_loop( self, gain=-900.0, offset=0.0, duration_sec=30 ):
-        to_msg = 'CL %s %s %s'%(repr(gain),repr(offset),repr(duration_sec))
+    def closed_loop( self, gain=-900.0, offset=0.0, duration_sec=30, save_sequence=False ):
+        to_msg = 'CL %s %s %s %s'%(repr(gain),repr(offset),repr(duration_sec), repr(int(save_sequence)))
         self._send(to_msg)
     def _send(self,to_msg):
         print 'sending message to state machine',to_msg
@@ -148,6 +222,9 @@ class StripeControlRemoteProcess:
                                  repr(stop_pos_deg),
                                  repr(velocity_dps))
         self._send(to_msg)
+    def replay_sequence( self ):
+        to_msg = 'REPLAY'
+        self._send(to_msg)
 
 def stripe_control_runner(experiment_file,
                           to_state_machine,
@@ -155,9 +232,11 @@ def stripe_control_runner(experiment_file,
                           display_text_queue):
     # this runs in a separate process
     print 'running experiment',experiment_file
-    stripe_control = StripeControlRemoteProcess(
-        to_state_machine,from_state_machine,display_text_queue)
-    execfile(experiment_file)
+    namespace = dict( stripe_control=StripeControlRemoteProcess(to_state_machine,
+                                                                from_state_machine,
+                                                                display_text_queue),
+                      SinusoidalBias=SinusoidalBias)
+    execfile(experiment_file,namespace)
 
 class ExperimentRunnerPluginInfo(strokelitude_plugin_module.PluginInfoBase):
     """called by strokelitude.plugin"""
