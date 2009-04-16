@@ -1,0 +1,76 @@
+#emacs, this is -*-Python-*- mode
+
+# Build a shared library (dumpframe1) that gets installed as an FView
+# plugin. Additionally, build a standalone C program from the same
+# source.
+
+import sys, os
+
+HAVE_MANIFEST_TOOL=False
+if sys.platform.startswith('win'):
+    # check if mt.exe exists on path
+    if 'MSVCDir' in os.environ: # VC7
+        msvc_dir = os.environ['MSVCDir']
+        versionname = os.path.split(msvc_dir)[-1]
+        if not versionname == 'VC7':
+            print 'WARNING: Could not determing if you have a manifest tool (mt.ext)'
+    elif 'VCINSTALLDIR' in os.environ: # VC8
+        HAVE_MANIFEST_TOOL=True
+
+if 1:
+    env = Environment(ENV = os.environ)
+
+    libname='dumpframe1'
+
+    lib_output_dir = 'simple_panels'
+    dumpframe_external_libpath = ['#%s'%lib_output_dir]
+
+    dumpframe_obj_dict = {}
+    #dumpframe_obj_dict['CFLAGS']=['-O2','-Wall','-ansi','-pedantic']
+
+    dumpframe_obj_dict.setdefault('source',[]).extend(['dumpframe_src/dumpframe1.c'])
+    dumpframe_obj_dict.setdefault('LIBS',[]).extend(['usb'])
+
+    if 1:
+        if sys.platform.startswith('win'):
+            dumpframe_obj_dict.setdefault('CPPDEFINES',{}).update({'DUMPFRAME_DLL':None,
+                                                                   'DUMPFRAME_EXPORTS':None,
+                                                                   })
+            dumpframe_obj_dict.setdefault('CCFLAGS',[]).extend(
+                ['/c',  # Compile Without Linking
+                 '/nologo',
+                 '/Ox', # Full Optimization
+                 '/MD', # Use Run-Time Library
+                 '/W3', # Warning Level
+                 '/EHsc', # Enable Exception Handling (changed from /GX)
+                 ])
+
+    dumpframe_obj_dict['target']=os.path.join(lib_output_dir,libname)
+
+    if sys.platform.startswith('win'):
+        if HAVE_MANIFEST_TOOL:
+            manifest = '%s.dll.manifest'%libname
+            # generate manifest
+            env['LINKFLAGS'] = [env['LINKFLAGS'], '/manifest']
+
+            # use manifest tool (mt.exe) after link step for executables
+            env['LINKCOM'] = [env['LINKCOM'],
+              'mt.exe /nologo /manifest %s /outputresource:$TARGET;1' % os.path.join(lib_output_dir,manifest)]
+
+            # use manifest tool (mt.exe) after link step for shared libraries
+            env['SHLINKCOM'] = [env['SHLINKCOM'],
+              'mt.exe /nologo /manifest %s /outputresource:$TARGET;#2' % os.path.join(lib_output_dir,manifest)]
+
+    env.SharedLibrary(**dumpframe_obj_dict)
+
+    # --------------------------------------
+    #
+    # Done building dumpframe
+    #
+    # --------------------------------------
+    dumpframe_external_libs = [libname]
+
+    dumpframe_env_kwargs = dumpframe_obj_dict.get('CPPDEFINES',{})
+    Export('env','dumpframe_external_libs','dumpframe_external_libpath','dumpframe_env_kwargs')
+    SConscript( 'dumpframe_no_library_demo/SConscript' )
+

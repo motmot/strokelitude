@@ -1,0 +1,6 @@
+*.os
+*.so
+.sconsign.dblite
+*.o
+simple_panels.egg-info
+dumpframe_no_library_demo/dumpframe_no_library
