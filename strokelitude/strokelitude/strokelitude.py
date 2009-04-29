@@ -611,6 +611,9 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
     light_on_dark = traits.Bool(True)
     threshold_fraction = traits.Float(0.5)
 
+    flight_detection_enabled = traits.Bool(True)
+    flight_detection_threshold = traits.Float(1e6)
+
     traits_view = View( Group( Item('recompute_mask',
                                     editor=ButtonEditor(),show_label=False),
                                Item('processing_enabled'),
@@ -624,6 +627,10 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
                                Item(name='threshold_fraction',
                                     ),
                                Item(name='light_on_dark',
+                                    ),
+                               Item(name='flight_detection_enabled',
+                                    ),
+                               Item(name='flight_detection_threshold',
                                     ),
                                ))
     def __init__(self,*args,**kwargs):
@@ -849,6 +856,14 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
                         results.append( np.nan )
 
                 left_angle_degrees, right_angle_degrees = results
+                del results
+
+                if self.flight_detection_enabled:
+                    if ((np.mean(left_vals) <= self.flight_detection_threshold) and
+                        (np.mean(right_vals) <= self.flight_detection_threshold)):
+                        beta = self.strokelitude_instance.maskdata.beta
+                        left_angle_degrees = -90.0
+                        right_angle_degrees = -90.0
 
                 ## for queue in self.plugin_data_queues:
                 ##     queue.put( (cam_id,timestamp,framenumber,results) )
