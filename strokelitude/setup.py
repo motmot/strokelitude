@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(name='strokelitude',
-      version='0.1',
+      description='realtime wingstroke amplitude analyzer (fview plugin)',
+      version='0.1.1',
       entry_points = {
     'motmot.fview.plugins':
     'strokelitude = strokelitude.strokelitude:StrokelitudeClass',
