@@ -1495,8 +1495,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         # draw lines
         for side, angle_degrees in [('left',left_angle_degrees),
                                     ('right',right_angle_degrees)]:
-            this_seg = self.maskdata.get_span_lineseg(side,angle_degrees*D2R)
-            draw_linesegs.extend(this_seg)
+            if not np.isnan(angle_degrees):
+                this_seg = self.maskdata.get_span_lineseg(side,angle_degrees*D2R)
+                draw_linesegs.extend(this_seg)
 
         processing_timestamp = time.time()
         if trigger_timestamp is not None:
