@@ -1398,6 +1398,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             print 'saving analog channels',names
             self.stream_ain_table.attrs.channel_names = names
 
+            self.stream_ain_table.attrs.Vcc = self.timestamp_modeler.Vcc
+
             self.stream_time_data_table = self.streaming_file.createTable(
                 self.streaming_file.root,'time_data',TimeDataDescription,
                 "time data",expectedrows=10000)

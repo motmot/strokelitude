@@ -36,11 +36,12 @@ def doit(fname,options):
     chans.remove('timestamps')
 
     names = h5.root.ain_wordstream.attrs.channel_names
-    if 0:
+    if hasattr(h5.root.ain_wordstream.attrs,'Vcc'):
         Vcc = h5.root.ain_wordstream.attrs.Vcc
+        print 'Vcc read from file at',Vcc
     else:
         Vcc=3.3
-        print 'Vcc',Vcc
+        print 'Vcc guessed at',Vcc
     ADCmax = (2**10)-1
     analog_gain = Vcc/ADCmax
 
