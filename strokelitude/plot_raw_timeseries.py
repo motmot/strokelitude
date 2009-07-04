@@ -15,7 +15,6 @@ def format_date(x, pos=None):
     return str(datetime.datetime.fromtimestamp(x,pacific))
 
 def doit(fname,options):
-    print 'options.timestamps',options.timestamps
     fname = sys.argv[1]
     h5 = tables.openFile(fname,mode='r')
 
