@@ -1437,7 +1437,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             print 'saving to disk...'
         else:
             print 'closing file...'
-            # flush queue
+            # clear queue
             self.save_data_queue = Queue.Queue()
 
             self.stream_ain_table   = None
