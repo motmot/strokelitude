@@ -1282,6 +1282,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         self.current_plugin_descr_dict = {}
         self.display_text_queue = None
 
+        self._list_of_timestamp_data = []
+        self._list_of_ain_wordstream_buffers = []
+
         # load maskdata from file
         self.pkl_fname = motmot.utils.config.rc_fname(
             must_already_exist=False,
@@ -1337,7 +1340,15 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 print('self.display_text_queue.get_nowait()',
                       self.display_text_queue.get_nowait())
 
-    def service_save_data(self,flush=False):
+    def on_ain_data_raw(self,newvalue):
+        self._list_of_ain_wordstream_buffers.append(newvalue)
+
+    def on_timestamp_data(self,timestamp_framestamp_2d_array):
+        if len(timestamp_framestamp_2d_array):
+            last_sample = timestamp_framestamp_2d_array[-1,:]
+            self._list_of_timestamp_data.append(last_sample)
+
+    def service_save_data(self):
         # pump the queue
         list_of_rows_of_data = []
         try:
@@ -1354,15 +1365,20 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             self.stream_table.flush()
 
         # analog input data...
-        buf = self.timestamp_modeler.pump_ain_wordstream_buffer(flush=flush)
-        if self.stream_ain_table is not None and buf is not None:
+        bufs = self._list_of_ain_wordstream_buffers
+        self._list_of_ain_wordstream_buffers = []
+        if self.stream_ain_table is not None and len(bufs):
+            buf = np.hstack(bufs)
             recarray = np.rec.array( [buf], dtype=AnalogInputWordstream_dtype)
             self.stream_ain_table.append( recarray )
             self.stream_ain_table.flush()
 
-        tsfs = self.timestamp_modeler.pump_timestamp_data(flush=flush)
-        if self.stream_time_data_table is not None and tsfs is not None:
-            timestamps,framestamps = tsfs
+        tsfss = self._list_of_timestamp_data
+        self._list_of_timestamp_data = []
+        if self.stream_time_data_table is not None and len(tsfss):
+            bigarr = np.vstack(tsfss)
+            timestamps = bigarr[:,0]
+            framestamps = bigarr[:,1]
             recarray = np.rec.array( [timestamps,framestamps], dtype=TimeData_dtype)
             self.stream_time_data_table.append( recarray )
             self.stream_time_data_table.flush()
@@ -1385,7 +1401,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 table.flush()
 
     def _save_to_disk_changed(self):
-        self.service_save_data(flush=True) # flush buffers
+        self.service_save_data()
         if self.save_to_disk:
             self.timestamp_modeler.block_activity = True
 
@@ -1554,6 +1570,13 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             if plugin.get_plugin_name()=='FView external trigger':
                 self.timestamp_modeler = plugin.timestamp_modeler
         print
+
+    def _timestamp_modeler_changed(self,newvalue):
+        # register our handlers
+        self.timestamp_modeler.on_trait_change(self.on_ain_data_raw,
+                                               'ain_data_raw')
+        self.timestamp_modeler.on_trait_change(self.on_timestamp_data,
+                                               'timestamps_framestamps')
 
     def quit(self):
         # save current maskdata
