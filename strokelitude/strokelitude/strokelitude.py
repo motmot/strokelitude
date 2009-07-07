@@ -1272,6 +1272,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,600))
         super(StrokelitudeClass,self).__init__(*args,**kw)
 
+        self._list_of_timestamp_data = []
+        self._list_of_ain_wordstream_buffers = []
+
         self.timestamp_modeler = None
         self.streaming_file = None
         self.stream_ain_table   = None
@@ -1332,6 +1335,20 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         self.timer = wx.Timer(self.frame, ID_Timer)
         wx.EVT_TIMER(self.frame, ID_Timer, self.OnTimer)
         self.timer.Start(2000)
+
+    def _timestamp_modeler_changed(self,newvalue):
+        # register our handlers
+        self.timestamp_modeler.on_trait_change(self.on_ain_data_raw,
+                                               'ain_data_raw')
+        self.timestamp_modeler.on_trait_change(self.on_timestamp_data,
+                                               'timestamps_framestamps')
+    def on_ain_data_raw(self,newvalue):
+        self._list_of_ain_wordstream_buffers.append(newvalue)
+
+    def on_timestamp_data(self,timestamp_framestamp_2d_array):
+        if len(timestamp_framestamp_2d_array):
+            last_sample = timestamp_framestamp_2d_array[-1,:]
+            self._list_of_timestamp_data.append(last_sample)
 
     def OnTimer(self,event):
         self.service_save_data()
