@@ -1237,6 +1237,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
     maskdata = traits.Instance(MaskData)
 
+    do_not_save_CamTrig_timestamps = traits.Bool(False)
+
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
@@ -1518,11 +1520,15 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         draw_points = [] #  [ (x,y) ]
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
-        if self.timestamp_modeler is not None:
-            trigger_timestamp = self.timestamp_modeler.register_frame(
-                cam_id,framenumber,timestamp)
+        if not self.do_not_save_CamTrig_timestamps:
+            if self.timestamp_modeler is not None:
+                trigger_timestamp = self.timestamp_modeler.register_frame(
+                    cam_id,framenumber,timestamp)
+            else:
+                trigger_timestamp = None
         else:
-            trigger_timestamp = None
+            # take trigger timestamp from fmf file on replay
+            trigger_timestamp = timestamp
 
         tmp = self.current_amplitude_method.process_frame(buf,buf_offset,timestamp,framenumber)
         left_angle_degrees, right_angle_degrees = tmp
@@ -1576,6 +1582,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
     def offline_startup_func(self,arg):
         """gets called by fview_replay_fmf"""
+        self.do_not_save_CamTrig_timestamps = True
         for method in self.avail_amplitude_methods:
             method.offline_startup_func(arg)
 
