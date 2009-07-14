@@ -11,8 +11,8 @@ from optparse import OptionParser
 import pytz, datetime, time
 pacific = pytz.timezone('US/Pacific')
 
-def format_date(x, pos=None):
-    return str(datetime.datetime.fromtimestamp(x,pacific))
+import scipy.io
+
 
 def doit(fname,options):
     fname = sys.argv[1]
@@ -31,43 +31,38 @@ def doit(fname,options):
     wordstream = wordstream['word'] # extract into normal numpy array
 
     r=easy_decode.easy_decode(wordstream,gain,offset,top)
-    chans = r.dtype.fields.keys()
-    chans.sort()
-    chans.remove('timestamps')
-
-    names = h5.root.ain_wordstream.attrs.channel_names
-    if hasattr(h5.root.ain_wordstream.attrs,'Vcc'):
-        Vcc = h5.root.ain_wordstream.attrs.Vcc
+    if r is not None:
+        chans = r.dtype.fields.keys()
+        chans.sort()
+        chans.remove('timestamps')
+        if 0:
+            Vcc = h5.root.ain_wordstream.attrs.Vcc
         print 'Vcc read from file at',Vcc
+        else:
+            Vcc=3.3
+            print 'Vcc',Vcc
+        ADCmax = (2**10)-1
+        analog_gain = Vcc/ADCmax
     else:
-        Vcc=3.3
-        print 'Vcc guessed at',Vcc
-    ADCmax = (2**10)-1
-    analog_gain = Vcc/ADCmax
+        chans = []
+    names = h5.root.ain_wordstream.attrs.channel_names
 
-    n_adc_samples = len(r['timestamps'])
+    if r is not None:
     dt = r['timestamps'][1]-r['timestamps'][0]
     samps_per_sec = 1.0/dt
     adc_duration = n_adc_samples*dt
     print '%d samples at %.1f samples/sec = %.1f seconds'%(n_adc_samples,
                                                            samps_per_sec,
                                                            adc_duration)
-    t0 = r['timestamps'][0]
+        t0 = r['timestamps'][0]
     stroke_times_zero_offset = stroke_times-t0
     if len(stroke_times_zero_offset):
         stroke_data_duration = stroke_times_zero_offset[-1]
         total_duration = max(stroke_data_duration,adc_duration)
     else:
-        total_duration = adc_duration
+        t0 = 0
 
-    if options.timestamps:
-        t_offset = 0
-        t_plot_start = t0
-    else:
-        t_offset = t0
-        t_plot_start = 0
-
-    N_subplots = len(chans)+2
+    N_subplots = len(chans)+5
     ax=None
     for i in range(N_subplots):
         ax = pylab.subplot(N_subplots,1,i+1,sharex=ax)
@@ -82,17 +77,34 @@ def doit(fname,options):
             ax.set_ylabel('V')
             ax.legend()
         elif i == len(chans):
-            ax.plot(stroke_times-t_offset,stroke_data['right'],label='R')
+            if np.all(np.isnan(stroke_data['right'])):
+                continue
             ax.set_ylabel('R (degrees)')
             ax.legend()
         elif i == len(chans)+1:
-            ax.plot(stroke_times-t_offset,stroke_data['left'],label='L')
+            if np.all(np.isnan(stroke_data['left'])):
+                continue
             ax.set_ylabel('L (degrees)')
             ax.legend()
-        if options.timestamps:
-            ax.xaxis.set_major_formatter(
-                mticker.FuncFormatter(format_date))
-        else:
+        elif i == len(chans)+2:
+            if np.all(np.isnan(stroke_data['left_antenna'])):
+                continue
+            ax.plot(stroke_times-t0,stroke_data['left_antenna'],label='Lant')
+            ax.set_ylabel('L antenna (degrees)')
+            ax.legend()
+        elif i == len(chans)+3:
+            if np.all(np.isnan(stroke_data['right_antenna'])):
+                continue
+            ax.plot(stroke_times-t0,stroke_data['right_antenna'],label='Rant')
+            ax.set_ylabel('R antenna (degrees)')
+            ax.legend()
+        elif i == len(chans)+4:
+            if np.all(np.isnan(stroke_data['head'])):
+                continue
+            ax.plot(stroke_times-t0,stroke_data['head'],label='H')
+            ax.set_ylabel('head (degrees)')
+            ax.legend()
+
             ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%s"))
         ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%s"))
     ax.set_xlabel('Time (sec)')

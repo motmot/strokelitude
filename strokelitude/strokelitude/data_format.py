@@ -7,6 +7,9 @@ class StrokelitudeDataDescription(IsDescription):
     processing_timestamp = FloatCol(pos=2) # when the analysis was done
     left = Float32Col(pos=3) # angle, degrees
     right = Float32Col(pos=4) # angle, degrees
+    left_antenna = Float32Col(pos=5) # angle, degrees
+    right_antenna = Float32Col(pos=6) # angle, degrees
+    head = Float32Col(pos=7) # angle, degrees
 
 AnalogInputWordstreamDescription = mdata_format.AnalogInputWordstreamDescription
 TimeDataDescription = mdata_format.TimeDataDescription

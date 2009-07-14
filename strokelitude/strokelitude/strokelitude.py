@@ -5,6 +5,7 @@ import data_format # strokelitude
 
 import motmot.utils.config
 import motmot.FastImage.FastImage as FastImage
+import motmot.realtime_image_analysis.realtime_image_analysis as realtime_image_analysis
 import motmot.fview.traited_plugin as traited_plugin
 
 # Weird bugs arise in class identity testing if this is not absolute
@@ -21,6 +22,7 @@ import scipy.ndimage
 import cairo
 import Queue
 import os, warnings, pickle
+import motmot.FlyMovieFormat.FlyMovieFormat as FMF
 
 import tables # pytables
 
@@ -41,6 +43,9 @@ from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
      ImageInspectorOverlay
 import motmot.fview_ext_trig.live_timestamp_modeler as modeler_module
+
+import math
+import time
 
 DataReadyEvent = wx.NewEventType()
 BGReadyEvent = wx.NewEventType()
@@ -916,6 +921,7 @@ class SobelFinder(AmplitudeFinder):
     gaussian_sigma = traits.Float(3.0)
     line_strength_thresh = traits.Float(20.0)
     update_plots = traits.Bool(False)
+
     bg_viewer = traits.Instance(PopUpPlot)
     a1_viewer = traits.Instance(PopUpPlot)
     a2_viewer = traits.Instance(PopUpPlot)
@@ -1237,25 +1243,137 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
     maskdata = traits.Instance(MaskData)
 
+    # Antenna tracking
+    antennae_tracking_enabled = traits.Bool(True)
+    write_data_to_a_text_file = traits.Bool(False)
+    follow_antennae_enabled = traits.Bool(False)
+
+    # Slider to define the pixel_threshold
+    pixel_threshold = traits.Range(0, 255, 150, mode='slider', set_enter=True)
+
+    # Slider to define the head tracking pivot point
+    head_pivot_point_x = traits.Range(0, 656, 335, mode='slider', set_enter=True)
+    head_pivot_point_y = traits.Range(0, 656, 245, mode='slider', set_enter=True)
+
+
+    # Slider to define the width of the box following the antennae
+    antenna_box_size = traits.Range(0, 50, 22, mode='slider', set_enter=True)
+    
+    # Slider to define the position of the left antenna box
+    A_antenna_x = traits.Range(0, 656, 312, mode='slider', set_enter=True)
+    A_antenna_y = traits.Range(0, 656, 320, mode='slider', set_enter=True)
+
+    # Slider to define the position of the right antenna box
+    B_antenna_x = traits.Range(0, 656, 372, mode='slider', set_enter=True)
+    B_antenna_y = traits.Range(0, 656, 320, mode='slider', set_enter=True)
+
     do_not_save_CamTrig_timestamps = traits.Bool(False)
+
+    # Variables to define the dynamic range based on the frame size
+    zero = 0
+    max_x = traits.Int
+    max_y = traits.Int
+    dynamic_min_x = traits.Range(0, 656, 0)
+    dynamic_min_y = traits.Range(0, 656, 0)
+    dynamic_max_x = traits.Range(0, 656, 656)
+    dynamic_max_y = traits.Range(0, 656, 656)
 
     traits_view = View( Group( Item(name='latency_msec',
                                     label='latency (msec)',
                                     style='readonly',
                                     ),
+
                                Item('current_amplitude_method',
                                     editor=InstanceEditor(
-        name = 'avail_amplitude_methods',
-        selectable=True,
-        editable = True),
+                                    name = 'avail_amplitude_methods',
+                                    selectable=True,
+                                    editable = True),
                                     style='custom'),
+
+                           Group(
+                               Group( Item('antennae_tracking_enabled'),
+                                      Item('follow_antennae_enabled'),
+                                      orientation = 'horizontal'),
+                           Group(
+                               Group(Item('pixel_threshold', width = 248), 
+                                     Item('antenna_box_size', width = 248),
+                                     orientation = 'vertical',
+                                     show_border = True ),
+ 
+                               Group(Item( 'head_pivot_point_x', 
+                                            editor = RangeEditor( low_name    = 'zero',
+                                                                  high_name   = 'max_x',
+                                                                  mode        = 'slider' ),
+                                            label = 'X',
+                                            width = 350,
+
+                                     ),
+                                     Item( 'head_pivot_point_y', 
+                                            editor = RangeEditor( low_name    = 'zero',
+                                                                  high_name   = 'max_y',
+                                                                  mode        = 'slider' ),
+                                            label = 'Y',
+                                            width = 350,
+
+                                     ),
+                                     orientation = 'vertical',
+                                     label = 'Head pivot point coordinates',
+                                     show_border = True ),
+                               orientation = 'horizontal'),
+               
+                               Group(
+                               Group(Item( 'A_antenna_x', 
+                                            editor = RangeEditor( low_name    = 'dynamic_min_x',
+                                                                  high_name   = 'dynamic_max_x',
+                                                                  mode        = 'slider' ),
+                                            label = 'X',
+                                            width = 350,
+
+                                     ),
+                                     Item( 'A_antenna_y', 
+                                            editor = RangeEditor( low_name    = 'dynamic_min_y',
+                                                                  high_name   = 'dynamic_max_y',
+                                                                  mode        = 'slider' ),
+                                            label = 'Y',
+                                            width = 350,
+
+                                     ),
+                                     orientation = 'vertical',
+                                     label = 'Box A coordinates',
+                                     show_border = True, 
+                                     padding = True ),
+
+                               Group(Item( 'B_antenna_x', 
+                                            editor = RangeEditor( low_name    = 'dynamic_min_x',
+                                                                  high_name   = 'dynamic_max_x',
+                                                                  mode        = 'slider' ),
+                                            label = 'X',
+                                            width = 350,
+
+                                     ),
+                                     Item( 'B_antenna_y', 
+                                            editor = RangeEditor( low_name    = 'dynamic_min_y',
+                                                                  high_name   = 'dynamic_max_y',
+                                                                  mode        = 'slider' ),
+                                            label = 'Y',
+                                            width = 350,
+
+                                     ),
+                                     orientation = 'vertical',
+                                     label = 'Box B coordinates',
+                                     show_border = True ),
+                               orientation = 'horizontal'),
+
+                               label = 'Antennae tracking',
+                               show_border = True ),
+
                                Group(
                                Item('current_stimulus_plugin',
                                     show_label=False,
                                     editor=InstanceEditor(
-        name = 'avail_stim_plugins',
-        selectable=True,
-        editable = False),
+                                    name = 'avail_stim_plugins',
+                                    selectable=True,
+                                    editable = False),
                                     style='custom'),
                                Item('edit_stimulus',show_label=False),
                                orientation='horizontal'),
@@ -1264,8 +1382,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
                                Item('maskdata',show_label=False),
 
-                               Item(name='save_to_disk',
-                                    ),
+                               Item(name='save_to_disk'),
+                               Item('write_data_to_a_text_file'),
                                Item(name='streaming_filename',
                                     style='readonly'),
                                ))
@@ -1289,6 +1407,15 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
         self._list_of_timestamp_data = []
         self._list_of_ain_wordstream_buffers = []
+        
+        # Variable used for writing the antenna, wing and head angles to a file
+        # See StrokelitudeClass.process_frame method for implementation
+        self.first_run = 1
+
+        # Arrays for keeping track of the last couple of eccentricity values
+        # Used to avoid interruption from the fly's feet
+        self.A_eccentricity_array = np.zeros(30)
+        self.B_eccentricity_array = np.zeros(30)
 
         # load maskdata from file
         self.pkl_fname = motmot.utils.config.rc_fname(
@@ -1453,7 +1580,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 self.plugin_table_dtypes[name] = tables.Description(
                     description().columns)._v_nestedDescr
 
-            print 'saving to disk...'
+            print 'saving to disk...', os.path.abspath(self.streaming_filename)
         else:
             print 'closing file...'
             # clear queue
@@ -1464,6 +1591,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             self.stream_table   = None
             self.stream_plugin_tables = None
             self.plugin_table_dtypes = None
+            #if self.streaming_file is not None:
             self.streaming_file.close()
             self.streaming_file = None
             print 'closed',repr(self.streaming_filename)
@@ -1548,9 +1676,6 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             self.current_plugin_queue.put(
                 (framenumber,left_angle_degrees, right_angle_degrees,
                 trigger_timestamp) )
-        self.save_data_queue.put(
-            (framenumber,trigger_timestamp,processing_timestamp,
-            left_angle_degrees, right_angle_degrees))
 
         if self.draw_mask:
             # XXX this is naughty -- it's not threasafe.
@@ -1558,6 +1683,236 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             extra = self.maskdata.all_linesegs
 
             draw_linesegs.extend( extra )
+
+        if self.antennae_tracking_enabled:
+            tmp = self
+            frame = np.asarray(buf)
+
+            # Parameters for drawing the antennae boxes
+            big = math.ceil(tmp.antenna_box_size*0.7)
+            small = math.ceil(tmp.antenna_box_size*0.3)
+
+            self.max_x = frame.shape[1]
+            self.max_y = frame.shape[0]
+            self.dynamic_min_x = int(big)
+            self.dynamic_max_x = int(math.floor(self.max_x - big))
+            self.dynamic_min_y = int(math.ceil(small))
+            self.dynamic_max_y = int(math.floor(self.max_y - big))
+
+            border_violation = tmp.A_antenna_x < self.dynamic_min_x or \
+                    tmp.A_antenna_x > self.dynamic_max_x or \
+                    tmp.A_antenna_y < self.dynamic_min_y or \
+                    tmp.A_antenna_y > self.dynamic_max_y or \
+                    tmp.B_antenna_x < self.dynamic_min_x or \
+                    tmp.B_antenna_x > self.dynamic_max_x or \
+                    tmp.B_antenna_y < self.dynamic_min_y or \
+                    tmp.B_antenna_y > self.dynamic_max_y
+            
+            if border_violation:
+                pass                
+                #tmp.A_antenna_x = int(frame.shape[1]*0.3)
+                #tmp.A_antenna_y = int(frame.shape[0]*0.7)
+                #tmp.B_antenna_x = int(frame.shape[1]*0.7)
+                #tmp.B_antenna_y = int(frame.shape[0]*0.7)
+                #tmp.head_pivot_point_x = int(frame.shape[1]*0.5)
+                #tmp.head_pivot_point_y = int(frame.shape[0]*0.5)
+            else:
+                tmp.A_antenna_x0 = tmp.A_antenna_x - big
+                tmp.A_antenna_x1 = tmp.A_antenna_x + small
+                tmp.A_antenna_y0 = tmp.A_antenna_y - small
+                tmp.A_antenna_y1 = tmp.A_antenna_y + big
+                tmp.B_antenna_x0 = tmp.B_antenna_x - small
+                tmp.B_antenna_x1 = tmp.B_antenna_x + big
+                tmp.B_antenna_y0 = tmp.B_antenna_y - small
+                tmp.B_antenna_y1 = tmp.B_antenna_y + big
+
+            if 1:
+                # Cropped regions of the antennae
+                region_A = (255 - frame[tmp.A_antenna_y0:tmp.A_antenna_y1,
+                              tmp.A_antenna_x0:tmp.A_antenna_x1]) > (255 - tmp.pixel_threshold)
+                region_B = (255 - frame[tmp.B_antenna_y0:tmp.B_antenna_y1,
+                              tmp.B_antenna_x0:tmp.B_antenna_x1]) > (255 - tmp.pixel_threshold)
+
+                fi_region_A = FastImage.asfastimage(region_A.astype(np.uint8))
+                fi_region_B = FastImage.asfastimage(region_B.astype(np.uint8))
+
+
+                # Error handling when the fly's leg gets inside the antennae box
+                try:
+                    A_fitting = realtime_image_analysis.FitParamsClass().fit(fi_region_A)
+                    B_fitting = realtime_image_analysis.FitParamsClass().fit(fi_region_B)
+
+                    # Parameters for drawing lines along the antennae
+                    A_area = A_fitting[2]
+                    A_x0 = A_fitting[0]
+                    A_y0 = A_fitting[1]
+                    A_slope = A_fitting[3]
+                    A_eccentricity = A_fitting[4]
+                    self.A_eccentricity_array = np.append(self.A_eccentricity_array,A_eccentricity)
+                    self.A_eccentricity_array = self.A_eccentricity_array.__getslice__(1,self.A_eccentricity_array.__len__())
+                    
+                    B_area = B_fitting[2]
+                    B_x0 = B_fitting[0]
+                    B_y0 = B_fitting[1]
+                    B_slope = B_fitting[3]
+                    B_eccentricity = B_fitting[4]
+                    self.B_eccentricity_array = np.append(self.B_eccentricity_array,B_eccentricity)
+                    self.B_eccentricity_array = self.B_eccentricity_array.__getslice__(1,self.B_eccentricity_array.__len__())
+
+                    # Length of the lines drawn along the antennae
+                    r = 40
+
+                    if tmp.maskdata.view_from_below:
+
+                        left_eccentricity_mean = self.A_eccentricity_array.mean()
+                        left_x00 = tmp.A_antenna_x0 + A_x0
+                        left_y00 = tmp.A_antenna_y0 + A_y0   
+                        left_theta = np.arctan(A_slope) + math.pi                       # Add pi to get the correct angle
+                        left_theta_degrees = (math.pi - left_theta)*180/math.pi         # Angle in degrees with respect to a horizontal line
+                        left_dx = r*np.cos(left_theta)
+                        left_dy = r*np.sin(left_theta)
+                        left_antennae = (left_x00,left_y00,left_x00 + left_dx,left_y00 + left_dy)
+
+                        right_eccentricity_mean = self.B_eccentricity_array.mean()
+                        right_x00 = tmp.B_antenna_x0 + B_x0
+                        right_y00 = tmp.B_antenna_y0 + B_y0
+                        right_theta = np.arctan(B_slope)
+                        right_theta_degrees = (right_theta)*180/math.pi                 # Angle in degrees from a vertical line along the fly
+                        right_dx = r*np.cos(right_theta)
+                        right_dy = r*np.sin(right_theta)
+                        right_antennae = (right_x00,right_y00,right_x00 + right_dx,right_y00 + right_dy)
+
+                    else:
+
+                        left_eccentricity_mean = self.B_eccentricity_array.mean()
+                        left_x00 = tmp.B_antenna_x0 + B_x0
+                        left_y00 = tmp.B_antenna_y0 + B_y0   
+                        left_theta = np.arctan(B_slope)
+                        left_theta_degrees = (left_theta)*180/math.pi                   # Angle in degrees with respect to a horizontal line
+                        left_dx = r*np.cos(left_theta)
+                        left_dy = r*np.sin(left_theta)
+                        left_antennae = (left_x00,left_y00,left_x00 + left_dx,left_y00 + left_dy)
+
+                        right_eccentricity_mean = self.A_eccentricity_array.mean()
+                        right_x00 = tmp.A_antenna_x0 + A_x0
+                        right_y00 = tmp.A_antenna_y0 + A_y0
+                        right_theta = np.arctan(A_slope) + math.pi                      # Add pi to get the correct angle
+                        right_theta_degrees = (math.pi - right_theta)*180/math.pi       # Angle in degrees from a vertical line along the fly
+                        right_dx = r*np.cos(right_theta)
+                        right_dy = r*np.sin(right_theta)
+                        right_antennae = (right_x00,right_y00,right_x00 + right_dx,right_y00 + right_dy)
+
+                    try:
+                        left_x00
+                        x00_is_set = 1
+                    except NameError:
+                        x00_is_set = 0
+
+                    if tmp.follow_antennae_enabled and x00_is_set: # and left_eccentricity > 0.8*left_eccentricity_mean and right_eccentricity > 0.8*right_eccentricity_mean:
+                        if tmp.maskdata.view_from_below:
+                            tmp.A_antenna_x = int(left_x00)
+                            tmp.A_antenna_y = int(left_y00)
+                            tmp.B_antenna_x = int(right_x00)
+                            tmp.B_antenna_y = int(right_y00) 
+                        else:
+                            tmp.A_antenna_x = int(right_x00)
+                            tmp.A_antenna_y = int(right_y00)
+                            tmp.B_antenna_x = int(left_x00)
+                            tmp.B_antenna_y = int(left_y00) 
+
+                except realtime_image_analysis.FitParamsError:
+                    print 'FitParamsError, antennae angles = NaN.'
+                    right_theta_degrees = np.nan
+                    left_theta_degrees = np.nan
+                    left_antennae = []
+                    right_antennae = []
+                    x00_is_set = 0
+                    letter_L1 = []
+                    letter_L2 = []
+                
+                if x00_is_set:
+                    between_antenna_x = (left_x00 + right_x00)/2
+                    between_antenna_y = (left_y00 + right_y00)/2
+                    head_slope = (between_antenna_x - tmp.head_pivot_point_x) / (between_antenna_y - tmp.head_pivot_point_y)
+                    head_theta = np.arctan(head_slope)
+                    if tmp.maskdata.view_from_below:
+                        head_theta_degrees = (head_theta)*180/math.pi
+                    else:
+                        head_theta_degrees = -(head_theta)*180/math.pi
+
+                else:
+                    between_antenna_x = np.nan
+                    between_antenna_y = np.nan
+                    head_theta_degrees = np.nan
+
+            # All angles are interpreted from a horizontal line outward from the fly.
+            # A positive head angle means that the head is tilted to the right.
+            if tmp.write_data_to_a_text_file:
+                # Create and open a file for writing the antennae and head angles only on first run
+                # The variable first_run is defined in the beginning of the class StrokelitudeClass 
+                if self.first_run:
+                    os.environ['TZ'] = 'UTC+07'
+                    time.tzset()
+                    experiment_time = time.strftime("%H%M%S")
+                    experiment_date = time.strftime("%Y%m%d")
+                    antennae_filename = 'angles_' + experiment_date + '_' + experiment_time + '.txt'
+                    self.antennae_angle = open(antennae_filename,'w')
+                    self.first_run = 0
+                timestamp = repr(time.time()) + '\t'
+                antennae_line = repr(left_theta_degrees) + '\t' + repr(right_theta_degrees) + '\t'
+                wing_line = repr(left_angle_degrees)+ '\t' + repr(right_angle_degrees) + '\t'
+                head_line = repr(head_theta_degrees) + '\n'
+                line = timestamp + antennae_line + wing_line + head_line
+                self.antennae_angle.write(line)
+
+            self.save_data_queue.put(
+                (framenumber,trigger_timestamp,processing_timestamp,
+                left_angle_degrees, right_angle_degrees,
+                left_theta_degrees, right_theta_degrees, head_theta_degrees))
+
+            if 1:
+                # Draw a lines along the antennae
+                if len(left_antennae):
+                    draw_linesegs.append( left_antennae )
+                if len(right_antennae):
+                    draw_linesegs.append( right_antennae )
+
+
+                # Draw a letter indicating the left side
+                if tmp.maskdata.view_from_below:
+                    letter_L1 = [tmp.A_antenna_x1, tmp.A_antenna_y1 + 5, tmp.A_antenna_x1, tmp.A_antenna_y1 + 20]
+                    letter_L2 = [tmp.A_antenna_x1, tmp.A_antenna_y1 + 5, tmp.A_antenna_x1 - 10, tmp.A_antenna_y1 + 5]
+                else:
+                    letter_L1 = [tmp.B_antenna_x1, tmp.B_antenna_y1 + 5, tmp.B_antenna_x1, tmp.B_antenna_y1 + 20]
+                    letter_L2 = [tmp.B_antenna_x1, tmp.B_antenna_y1 + 5, tmp.B_antenna_x1 - 10, tmp.B_antenna_y1 + 5]
+
+                draw_linesegs.append( letter_L1 )
+                draw_linesegs.append( letter_L2 )
+
+                draw_points.append([tmp.head_pivot_point_x, tmp.head_pivot_point_y])
+
+                draw_linesegs.append( (tmp.head_pivot_point_x, tmp.head_pivot_point_y, 
+                                       between_antenna_x, between_antenna_y) )
+
+                # Draw a box around the left antenna
+                draw_linesegs.append( (tmp.A_antenna_x0, tmp.A_antenna_y0, 
+                                       tmp.A_antenna_x0, tmp.A_antenna_y1) )
+                draw_linesegs.append( (tmp.A_antenna_x0, tmp.A_antenna_y1, 
+                                       tmp.A_antenna_x1, tmp.A_antenna_y1) )
+                draw_linesegs.append( (tmp.A_antenna_x1, tmp.A_antenna_y1, 
+                                       tmp.A_antenna_x1, tmp.A_antenna_y0) )
+                draw_linesegs.append( (tmp.A_antenna_x1, tmp.A_antenna_y0, 
+                                       tmp.A_antenna_x0, tmp.A_antenna_y0) )
+
+                                # Draw a box around the right antenna
+                draw_linesegs.append( (tmp.B_antenna_x0, tmp.B_antenna_y0, 
+                                       tmp.B_antenna_x0, tmp.B_antenna_y1) )
+                draw_linesegs.append( (tmp.B_antenna_x0, tmp.B_antenna_y1, 
+                                       tmp.B_antenna_x1, tmp.B_antenna_y1) )
+                draw_linesegs.append( (tmp.B_antenna_x1, tmp.B_antenna_y1, 
+                                       tmp.B_antenna_x1, tmp.B_antenna_y0) )
+                draw_linesegs.append( (tmp.B_antenna_x1, tmp.B_antenna_y0, 
+                                       tmp.B_antenna_x0, tmp.B_antenna_y0) )
 
         return draw_points, draw_linesegs
 
