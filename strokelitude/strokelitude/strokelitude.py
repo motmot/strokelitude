@@ -1244,9 +1244,10 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
     maskdata = traits.Instance(MaskData)
 
     # Antenna tracking
-    antennae_tracking_enabled = traits.Bool(True)
+    antennae_tracking_enabled = traits.Bool(False)
     write_data_to_a_text_file = traits.Bool(False)
     follow_antennae_enabled = traits.Bool(False)
+    draw_antennae_boxes = traits.Bool(False)
 
     # Slider to define the pixel_threshold
     pixel_threshold = traits.Range(0, 255, 150, mode='slider', set_enter=True)
@@ -1293,6 +1294,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                            Group(
                                Group( Item('antennae_tracking_enabled'),
                                       Item('follow_antennae_enabled'),
+                                      Item('draw_antennae_boxes'),
                                       orientation = 'horizontal'),
                            Group(
                                Group(Item('pixel_threshold', width = 248), 
@@ -1648,6 +1650,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         draw_points = [] #  [ (x,y) ]
         draw_linesegs = [] # [ (x0,y0,x1,y1) ]
 
+        x_offset = buf_offset[0]
+        y_offset = buf_offset[1]
+
         if not self.do_not_save_CamTrig_timestamps:
             if self.timestamp_modeler is not None:
                 trigger_timestamp = self.timestamp_modeler.register_frame(
@@ -1710,21 +1715,16 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             
             if border_violation:
                 pass                
-                #tmp.A_antenna_x = int(frame.shape[1]*0.3)
-                #tmp.A_antenna_y = int(frame.shape[0]*0.7)
-                #tmp.B_antenna_x = int(frame.shape[1]*0.7)
-                #tmp.B_antenna_y = int(frame.shape[0]*0.7)
-                #tmp.head_pivot_point_x = int(frame.shape[1]*0.5)
-                #tmp.head_pivot_point_y = int(frame.shape[0]*0.5)
+
             else:
-                tmp.A_antenna_x0 = tmp.A_antenna_x - big
-                tmp.A_antenna_x1 = tmp.A_antenna_x + small
-                tmp.A_antenna_y0 = tmp.A_antenna_y - small
-                tmp.A_antenna_y1 = tmp.A_antenna_y + big
-                tmp.B_antenna_x0 = tmp.B_antenna_x - small
-                tmp.B_antenna_x1 = tmp.B_antenna_x + big
-                tmp.B_antenna_y0 = tmp.B_antenna_y - small
-                tmp.B_antenna_y1 = tmp.B_antenna_y + big
+                tmp.A_antenna_x0 = tmp.A_antenna_x - big + x_offset
+                tmp.A_antenna_x1 = tmp.A_antenna_x + small + x_offset
+                tmp.A_antenna_y0 = tmp.A_antenna_y - small + y_offset
+                tmp.A_antenna_y1 = tmp.A_antenna_y + big + y_offset
+                tmp.B_antenna_x0 = tmp.B_antenna_x - small + x_offset
+                tmp.B_antenna_x1 = tmp.B_antenna_x + big + x_offset
+                tmp.B_antenna_y0 = tmp.B_antenna_y - small + y_offset
+                tmp.B_antenna_y1 = tmp.B_antenna_y + big + y_offset
 
             if 1:
                 # Cropped regions of the antennae
@@ -1893,7 +1893,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
                 draw_linesegs.append( (tmp.head_pivot_point_x, tmp.head_pivot_point_y, 
                                        between_antenna_x, between_antenna_y) )
-
+            
+            if tmp.draw_antennae_boxes:
                 # Draw a box around the left antenna
                 draw_linesegs.append( (tmp.A_antenna_x0, tmp.A_antenna_y0, 
                                        tmp.A_antenna_x0, tmp.A_antenna_y1) )
