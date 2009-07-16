@@ -1259,7 +1259,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
     # Slider to define the width of the box following the antennae
     antenna_box_size = traits.Range(0, 50, 22, mode='slider', set_enter=True)
-    
+
     # Slider to define the position of the left antenna box
     A_antenna_x = traits.Range(0, 656, 312, mode='slider', set_enter=True)
     A_antenna_y = traits.Range(0, 656, 320, mode='slider', set_enter=True)
@@ -1297,12 +1297,12 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                       Item('draw_antennae_boxes'),
                                       orientation = 'horizontal'),
                            Group(
-                               Group(Item('pixel_threshold', width = 248), 
+                               Group(Item('pixel_threshold', width = 248),
                                      Item('antenna_box_size', width = 248),
                                      orientation = 'vertical',
                                      show_border = True ),
- 
-                               Group(Item( 'head_pivot_point_x', 
+
+                               Group(Item( 'head_pivot_point_x',
                                             editor = RangeEditor( low_name    = 'zero',
                                                                   high_name   = 'max_x',
                                                                   mode        = 'slider' ),
@@ -1310,7 +1310,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                             width = 350,
 
                                      ),
-                                     Item( 'head_pivot_point_y', 
+                                     Item( 'head_pivot_point_y',
                                             editor = RangeEditor( low_name    = 'zero',
                                                                   high_name   = 'max_y',
                                                                   mode        = 'slider' ),
@@ -1322,9 +1322,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                      label = 'Head pivot point coordinates',
                                      show_border = True ),
                                orientation = 'horizontal'),
-               
+
                                Group(
-                               Group(Item( 'A_antenna_x', 
+                               Group(Item( 'A_antenna_x',
                                             editor = RangeEditor( low_name    = 'dynamic_min_x',
                                                                   high_name   = 'dynamic_max_x',
                                                                   mode        = 'slider' ),
@@ -1332,7 +1332,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                             width = 350,
 
                                      ),
-                                     Item( 'A_antenna_y', 
+                                     Item( 'A_antenna_y',
                                             editor = RangeEditor( low_name    = 'dynamic_min_y',
                                                                   high_name   = 'dynamic_max_y',
                                                                   mode        = 'slider' ),
@@ -1342,10 +1342,10 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                      ),
                                      orientation = 'vertical',
                                      label = 'Box A coordinates',
-                                     show_border = True, 
+                                     show_border = True,
                                      padding = True ),
 
-                               Group(Item( 'B_antenna_x', 
+                               Group(Item( 'B_antenna_x',
                                             editor = RangeEditor( low_name    = 'dynamic_min_x',
                                                                   high_name   = 'dynamic_max_x',
                                                                   mode        = 'slider' ),
@@ -1353,7 +1353,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                             width = 350,
 
                                      ),
-                                     Item( 'B_antenna_y', 
+                                     Item( 'B_antenna_y',
                                             editor = RangeEditor( low_name    = 'dynamic_min_y',
                                                                   high_name   = 'dynamic_max_y',
                                                                   mode        = 'slider' ),
@@ -1409,7 +1409,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
         self._list_of_timestamp_data = []
         self._list_of_ain_wordstream_buffers = []
-        
+
         # Variable used for writing the antenna, wing and head angles to a file
         # See StrokelitudeClass.process_frame method for implementation
         self.first_run = 1
@@ -1712,19 +1712,27 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                     tmp.B_antenna_x > self.dynamic_max_x or \
                     tmp.B_antenna_y < self.dynamic_min_y or \
                     tmp.B_antenna_y > self.dynamic_max_y
-            
+
             if border_violation:
-                pass                
+                pass
 
             else:
-                tmp.A_antenna_x0 = tmp.A_antenna_x - big + x_offset
-                tmp.A_antenna_x1 = tmp.A_antenna_x + small + x_offset
-                tmp.A_antenna_y0 = tmp.A_antenna_y - small + y_offset
-                tmp.A_antenna_y1 = tmp.A_antenna_y + big + y_offset
-                tmp.B_antenna_x0 = tmp.B_antenna_x - small + x_offset
-                tmp.B_antenna_x1 = tmp.B_antenna_x + big + x_offset
-                tmp.B_antenna_y0 = tmp.B_antenna_y - small + y_offset
-                tmp.B_antenna_y1 = tmp.B_antenna_y + big + y_offset
+                tmp.A_antenna_x0 = tmp.A_antenna_x - big
+                tmp.A_antenna_x1 = tmp.A_antenna_x + small
+                tmp.A_antenna_y0 = tmp.A_antenna_y - small
+                tmp.A_antenna_y1 = tmp.A_antenna_y + big
+                tmp.B_antenna_x0 = tmp.B_antenna_x - small
+                tmp.B_antenna_x1 = tmp.B_antenna_x + big
+                tmp.B_antenna_y0 = tmp.B_antenna_y - small
+                tmp.B_antenna_y1 = tmp.B_antenna_y + big
+                tmp.A_antenna_x0_offset = tmp.A_antenna_x - big + x_offset
+                tmp.A_antenna_x1_offset = tmp.A_antenna_x + small + x_offset
+                tmp.A_antenna_y0_offset = tmp.A_antenna_y - small + y_offset
+                tmp.A_antenna_y1_offset = tmp.A_antenna_y + big + y_offset
+                tmp.B_antenna_x0_offset = tmp.B_antenna_x - small + x_offset
+                tmp.B_antenna_x1_offset = tmp.B_antenna_x + big + x_offset
+                tmp.B_antenna_y0_offset = tmp.B_antenna_y - small + y_offset
+                tmp.B_antenna_y1_offset = tmp.B_antenna_y + big + y_offset
 
             if 1:
                 # Cropped regions of the antennae
@@ -1750,7 +1758,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                     A_eccentricity = A_fitting[4]
                     self.A_eccentricity_array = np.append(self.A_eccentricity_array,A_eccentricity)
                     self.A_eccentricity_array = self.A_eccentricity_array.__getslice__(1,self.A_eccentricity_array.__len__())
-                    
+
                     B_area = B_fitting[2]
                     B_x0 = B_fitting[0]
                     B_y0 = B_fitting[1]
@@ -1766,12 +1774,14 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
                         left_eccentricity_mean = self.A_eccentricity_array.mean()
                         left_x00 = tmp.A_antenna_x0 + A_x0
-                        left_y00 = tmp.A_antenna_y0 + A_y0   
+                        left_y00 = tmp.A_antenna_y0 + A_y0
                         left_theta = np.arctan(A_slope) + math.pi                       # Add pi to get the correct angle
                         left_theta_degrees = (math.pi - left_theta)*180/math.pi         # Angle in degrees with respect to a horizontal line
                         left_dx = r*np.cos(left_theta)
                         left_dy = r*np.sin(left_theta)
-                        left_antennae = (left_x00,left_y00,left_x00 + left_dx,left_y00 + left_dy)
+                        left_antennae = (left_x00 + x_offset,left_y00 + y_offset,
+					 left_x00 + left_dx + x_offset,
+					 left_y00 + left_dy + y_offset)
 
                         right_eccentricity_mean = self.B_eccentricity_array.mean()
                         right_x00 = tmp.B_antenna_x0 + B_x0
@@ -1780,18 +1790,22 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                         right_theta_degrees = (right_theta)*180/math.pi                 # Angle in degrees from a vertical line along the fly
                         right_dx = r*np.cos(right_theta)
                         right_dy = r*np.sin(right_theta)
-                        right_antennae = (right_x00,right_y00,right_x00 + right_dx,right_y00 + right_dy)
+                        right_antennae = (right_x00 + x_offset,right_y00 + y_offset,
+					  right_x00 + right_dx + x_offset,
+					  right_y00 + right_dy + y_offset)
 
                     else:
 
                         left_eccentricity_mean = self.B_eccentricity_array.mean()
                         left_x00 = tmp.B_antenna_x0 + B_x0
-                        left_y00 = tmp.B_antenna_y0 + B_y0   
+                        left_y00 = tmp.B_antenna_y0 + B_y0
                         left_theta = np.arctan(B_slope)
                         left_theta_degrees = (left_theta)*180/math.pi                   # Angle in degrees with respect to a horizontal line
                         left_dx = r*np.cos(left_theta)
                         left_dy = r*np.sin(left_theta)
-                        left_antennae = (left_x00,left_y00,left_x00 + left_dx,left_y00 + left_dy)
+                        left_antennae = (left_x00 + x_offset,left_y00 + y_offset,
+					 left_x00 + left_dx + x_offset,
+					 left_y00 + left_dy + y_offset)
 
                         right_eccentricity_mean = self.A_eccentricity_array.mean()
                         right_x00 = tmp.A_antenna_x0 + A_x0
@@ -1800,7 +1814,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                         right_theta_degrees = (math.pi - right_theta)*180/math.pi       # Angle in degrees from a vertical line along the fly
                         right_dx = r*np.cos(right_theta)
                         right_dy = r*np.sin(right_theta)
-                        right_antennae = (right_x00,right_y00,right_x00 + right_dx,right_y00 + right_dy)
+                        right_antennae = (right_x00 + x_offset,right_y00 + y_offset,
+					  right_x00 + right_dx + x_offset,
+					  right_y00 + right_dy + y_offset)
 
                     try:
                         left_x00
@@ -1813,12 +1829,12 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                             tmp.A_antenna_x = int(left_x00)
                             tmp.A_antenna_y = int(left_y00)
                             tmp.B_antenna_x = int(right_x00)
-                            tmp.B_antenna_y = int(right_y00) 
+                            tmp.B_antenna_y = int(right_y00)
                         else:
                             tmp.A_antenna_x = int(right_x00)
                             tmp.A_antenna_y = int(right_y00)
                             tmp.B_antenna_x = int(left_x00)
-                            tmp.B_antenna_y = int(left_y00) 
+                            tmp.B_antenna_y = int(left_y00)
 
                 except realtime_image_analysis.FitParamsError:
                     print 'FitParamsError, antennae angles = NaN.'
@@ -1829,7 +1845,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                     x00_is_set = 0
                     letter_L1 = []
                     letter_L2 = []
-                
+
                 if x00_is_set:
                     between_antenna_x = (left_x00 + right_x00)/2
                     between_antenna_y = (left_y00 + right_y00)/2
@@ -1849,7 +1865,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             # A positive head angle means that the head is tilted to the right.
             if tmp.write_data_to_a_text_file:
                 # Create and open a file for writing the antennae and head angles only on first run
-                # The variable first_run is defined in the beginning of the class StrokelitudeClass 
+                # The variable first_run is defined in the beginning of the class StrokelitudeClass
                 if self.first_run:
                     os.environ['TZ'] = 'UTC+07'
                     time.tzset()
@@ -1877,43 +1893,49 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 if len(right_antennae):
                     draw_linesegs.append( right_antennae )
 
+                draw_points.append([tmp.head_pivot_point_x + x_offset,
+				    tmp.head_pivot_point_y + y_offset])
+
+                draw_linesegs.append( (tmp.head_pivot_point_x + x_offset,
+				       tmp.head_pivot_point_y + y_offset,
+                                       between_antenna_x + x_offset,
+				       between_antenna_y + y_offset) )
+
+            if tmp.draw_antennae_boxes:
+                # Draw a box around the left antenna
+                draw_linesegs.append( (tmp.A_antenna_x0_offset, tmp.A_antenna_y0_offset,
+                                       tmp.A_antenna_x0_offset, tmp.A_antenna_y1_offset) )
+                draw_linesegs.append( (tmp.A_antenna_x0_offset, tmp.A_antenna_y1_offset,
+                                       tmp.A_antenna_x1_offset, tmp.A_antenna_y1_offset) )
+                draw_linesegs.append( (tmp.A_antenna_x1_offset, tmp.A_antenna_y1_offset,
+                                       tmp.A_antenna_x1_offset, tmp.A_antenna_y0_offset) )
+                draw_linesegs.append( (tmp.A_antenna_x1_offset, tmp.A_antenna_y0_offset,
+                                       tmp.A_antenna_x0_offset, tmp.A_antenna_y0_offset) )
+
+                                # Draw a box around the right antenna
+                draw_linesegs.append( (tmp.B_antenna_x0_offset, tmp.B_antenna_y0_offset,
+                                       tmp.B_antenna_x0_offset, tmp.B_antenna_y1_offset) )
+                draw_linesegs.append( (tmp.B_antenna_x0_offset, tmp.B_antenna_y1_offset,
+                                       tmp.B_antenna_x1_offset, tmp.B_antenna_y1_offset) )
+                draw_linesegs.append( (tmp.B_antenna_x1_offset, tmp.B_antenna_y1_offset,
+                                       tmp.B_antenna_x1_offset, tmp.B_antenna_y0_offset) )
+                draw_linesegs.append( (tmp.B_antenna_x1_offset, tmp.B_antenna_y0_offset,
+                                       tmp.B_antenna_x0_offset, tmp.B_antenna_y0_offset) )
 
                 # Draw a letter indicating the left side
                 if tmp.maskdata.view_from_below:
-                    letter_L1 = [tmp.A_antenna_x1, tmp.A_antenna_y1 + 5, tmp.A_antenna_x1, tmp.A_antenna_y1 + 20]
-                    letter_L2 = [tmp.A_antenna_x1, tmp.A_antenna_y1 + 5, tmp.A_antenna_x1 - 10, tmp.A_antenna_y1 + 5]
+                    letter_L1 = [tmp.A_antenna_x1 + x_offset, tmp.A_antenna_y1 + y_offset + 5,
+				 tmp.A_antenna_x1 + x_offset, tmp.A_antenna_y1 + y_offset + 20]
+                    letter_L2 = [tmp.A_antenna_x1 + x_offset, tmp.A_antenna_y1 + y_offset + 5,
+				 tmp.A_antenna_x1 + x_offset - 10, tmp.A_antenna_y1 + y_offset + 5]
                 else:
-                    letter_L1 = [tmp.B_antenna_x1, tmp.B_antenna_y1 + 5, tmp.B_antenna_x1, tmp.B_antenna_y1 + 20]
-                    letter_L2 = [tmp.B_antenna_x1, tmp.B_antenna_y1 + 5, tmp.B_antenna_x1 - 10, tmp.B_antenna_y1 + 5]
+                    letter_L1 = [tmp.B_antenna_x1 + x_offset, tmp.B_antenna_y1 + y_offset + 5,
+				 tmp.B_antenna_x1 + x_offset, tmp.B_antenna_y1 + y_offset + 20]
+                    letter_L2 = [tmp.B_antenna_x1 + x_offset, tmp.B_antenna_y1 + y_offset + 5,
+				 tmp.B_antenna_x1 + x_offset - 10, tmp.B_antenna_y1 + y_offset + 5]
 
                 draw_linesegs.append( letter_L1 )
                 draw_linesegs.append( letter_L2 )
-
-                draw_points.append([tmp.head_pivot_point_x, tmp.head_pivot_point_y])
-
-                draw_linesegs.append( (tmp.head_pivot_point_x, tmp.head_pivot_point_y, 
-                                       between_antenna_x, between_antenna_y) )
-            
-            if tmp.draw_antennae_boxes:
-                # Draw a box around the left antenna
-                draw_linesegs.append( (tmp.A_antenna_x0, tmp.A_antenna_y0, 
-                                       tmp.A_antenna_x0, tmp.A_antenna_y1) )
-                draw_linesegs.append( (tmp.A_antenna_x0, tmp.A_antenna_y1, 
-                                       tmp.A_antenna_x1, tmp.A_antenna_y1) )
-                draw_linesegs.append( (tmp.A_antenna_x1, tmp.A_antenna_y1, 
-                                       tmp.A_antenna_x1, tmp.A_antenna_y0) )
-                draw_linesegs.append( (tmp.A_antenna_x1, tmp.A_antenna_y0, 
-                                       tmp.A_antenna_x0, tmp.A_antenna_y0) )
-
-                                # Draw a box around the right antenna
-                draw_linesegs.append( (tmp.B_antenna_x0, tmp.B_antenna_y0, 
-                                       tmp.B_antenna_x0, tmp.B_antenna_y1) )
-                draw_linesegs.append( (tmp.B_antenna_x0, tmp.B_antenna_y1, 
-                                       tmp.B_antenna_x1, tmp.B_antenna_y1) )
-                draw_linesegs.append( (tmp.B_antenna_x1, tmp.B_antenna_y1, 
-                                       tmp.B_antenna_x1, tmp.B_antenna_y0) )
-                draw_linesegs.append( (tmp.B_antenna_x1, tmp.B_antenna_y0, 
-                                       tmp.B_antenna_x0, tmp.B_antenna_y0) )
 
         return draw_points, draw_linesegs
 
