@@ -1551,23 +1551,26 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
     def _save_to_disk_changed(self):
         self.service_save_data()
         if self.save_to_disk:
-            self.timestamp_modeler.block_activity = True
+            if self.timestamp_modeler is not None:
+                self.timestamp_modeler.block_activity = True
 
             self.streaming_filename = time.strftime('strokelitude%Y%m%d_%H%M%S.h5')
             self.streaming_file = tables.openFile( self.streaming_filename, mode='w')
             self.stream_ain_table   = self.streaming_file.createTable(
                 self.streaming_file.root,'ain_wordstream',AnalogInputWordstreamDescription,
                 "AIN data",expectedrows=100000)
-            names = self.timestamp_modeler.channel_names
-            print 'saving analog channels',names
-            self.stream_ain_table.attrs.channel_names = names
+            if self.timestamp_modeler is not None:
+                names = self.timestamp_modeler.channel_names
+                print 'saving analog channels',names
+                self.stream_ain_table.attrs.channel_names = names
 
-            self.stream_ain_table.attrs.Vcc = self.timestamp_modeler.Vcc
+                self.stream_ain_table.attrs.Vcc = self.timestamp_modeler.Vcc
 
             self.stream_time_data_table = self.streaming_file.createTable(
                 self.streaming_file.root,'time_data',TimeDataDescription,
                 "time data",expectedrows=10000)
-            self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
+            if self.timestamp_modeler is not None:
+                self.stream_time_data_table.attrs.top = self.timestamp_modeler.timer3_top
 
             self.stream_table   = self.streaming_file.createTable(
                 self.streaming_file.root,'stroke_data', StrokelitudeDataDescription,
@@ -1598,7 +1601,8 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             self.streaming_file = None
             print 'closed',repr(self.streaming_filename)
             self.streaming_filename = ''
-            self.timestamp_modeler.block_activity = False
+            if self.timestamp_modeler is not None:
+                self.timestamp_modeler.block_activity = False
 
     def _edit_stimulus_fired(self):
         if self.current_stimulus_plugin is not None:
