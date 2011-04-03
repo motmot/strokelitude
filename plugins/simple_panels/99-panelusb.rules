@@ -1,3 +1,0 @@
-# Panel USB Control
-SUBSYSTEM=="usb_device", ACTION=="add", SYSFS{idVendor}=="1781",
-SYSFS{idProduct}=="0bb2", GROUP="panelusb", MODE="0660"
