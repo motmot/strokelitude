@@ -157,6 +157,7 @@ class MaskData(traits.HasTraits):
     left_mat = traits.Property(depends_on=['quads_left'])
     left_mat_half = traits.Property(depends_on=['quads_left'])
     left_mat_quarter = traits.Property(depends_on=['quads_left'])
+    left_mat_quarter_norm = traits.Property(depends_on=['left_mat_quarter'])
 
     mean_quad_angles_deg = traits.Property(depends_on=[
         'alpha', 'beta', 'nbins'])
@@ -168,6 +169,7 @@ class MaskData(traits.HasTraits):
     right_mat = traits.Property(depends_on=['quads_right'])
     right_mat_half = traits.Property(depends_on=['quads_right'])
     right_mat_quarter = traits.Property(depends_on=['quads_right'])
+    right_mat_quarter_norm = traits.Property(depends_on=['right_mat_quarter'])
 
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
@@ -268,6 +270,13 @@ class MaskData(traits.HasTraits):
         return result
 
     @traits.cached_property
+    def _get_left_mat_quarter_norm(self):
+        result = []
+        for (fi_roi, left, bottom) in self.left_mat_quarter:
+            result.append( 1.0/np.sum(fi_roi) )
+        return np.array(result)
+
+    @traits.cached_property
     def _get_right_mat(self):
         result = []
         for quad in self.quads_right:
@@ -295,6 +304,13 @@ class MaskData(traits.HasTraits):
                                                          frac=4)
             result.append( (fi_roi, left, bottom) )
         return result
+
+    @traits.cached_property
+    def _get_right_mat_quarter_norm(self):
+        result = []
+        for (fi_roi, right, bottom) in self.right_mat_quarter:
+            result.append( 1.0/np.sum(fi_roi) )
+        return np.array(result)
 
     @traits.cached_property
     def _get_mean_quad_angles_deg(self):
@@ -1078,23 +1094,6 @@ class SobelFinder(AmplitudeFinder):
 
             if 1:
                 fi_binG = FastImage.asfastimage(binG)
-
-                # LEFT
-                left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
-                left_vals = compute_sparse_mult(left_mat_quarter,fi_binG)
-                idx = np.argmax(left_vals)
-                left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
-                                                                                     idx)
-                left_angle_degrees = left_angle_radians*R2D
-
-                # RIGHT
-                right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
-                right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
-                idx = np.argmax(right_vals)
-                right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
-                                                                                      idx)
-                right_angle_degrees = right_angle_radians*R2D
-            else:
                 if binarize:
                     left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
                     right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
@@ -1102,6 +1101,8 @@ class SobelFinder(AmplitudeFinder):
                     fi_binG = FastImage.asfastimage(binG)
                     left_vals  = compute_sparse_mult(left_mat_quarter,fi_binG)
                     right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
+                    normed_left_vals = left_vals*self.strokelitude_instance.maskdata.left_mat_quarter_norm
+                    normed_right_vals = right_vals*self.strokelitude_instance.maskdata.right_mat_quarter_norm
                 else:
                     left_mat_half = self.strokelitude_instance.maskdata.left_mat_half_float32
                     right_mat_half = self.strokelitude_instance.maskdata.right_mat_half_float32
@@ -1113,9 +1114,9 @@ class SobelFinder(AmplitudeFinder):
                 ## right_vals = compute_sparse_mult(right_mat_half,fi_G_x_uint8)
 
                 #print 'left_vals',left_vals
-                idx_left = np.argmax(left_vals)
+                idx_left = np.argmax(normed_left_vals)
                 #print idx_left
-                idx_right = np.argmax(right_vals)
+                idx_right = np.argmax(normed_right_vals)
 
                 # do we have enough line strength?
                 n_pts_left = left_vals[idx_left]
