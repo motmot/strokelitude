@@ -153,8 +153,6 @@ class MaskData(traits.HasTraits):
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
         'rotation','translation','view_from_below',
         ])
-    hough_left = traits.Property(depends_on=['quads_left'])
-    hough_right = traits.Property(depends_on=['quads_right'])
 
     left_mat = traits.Property(depends_on=['quads_left'])
     left_mat_half = traits.Property(depends_on=['quads_left'])
@@ -268,60 +266,6 @@ class MaskData(traits.HasTraits):
                                                          frac=4)
             result.append( (fi_roi, left, bottom) )
         return result
-
-    @traits.cached_property
-    def _get_hough_left(self):
-        x,y = np.dot(self.rotation,self._get_wingsplit_translation('left')) + self.translation
-        sign = 1
-        hough_lut = compute_hough_lookup_table(x,y,self.gamma*D2R,sign,self.maxx,self.maxy,frac=4)
-        scale = 255.0/(2*np.pi)
-        hough_lut *= scale
-        #return hough_lut
-        hough_lut = hough_lut.astype(np.uint8)
-        hough_lut_fi = FastImage.asfastimage(hough_lut)
-        # take only the region where the quads of the mask extend
-        # XXX could make the non-square...
-        left,bottom,size = self._calc_lbs(self.quads_left,frac=4)
-        hough_lut_fi_roi = hough_lut_fi.roi( left, bottom, size )
-        result = (hough_lut_fi_roi, left, bottom)
-        return result
-
-    @traits.cached_property
-    def _get_hough_right(self):
-        x,y = np.dot(self.rotation,self._get_wingsplit_translation('right')) + self.translation
-        sign = -1
-        hough_lut = compute_hough_lookup_table(x,y,self.gamma*D2R,sign,self.maxx,self.maxy,frac=4)
-        scale = 255.0/(2*np.pi)
-        hough_lut *= scale
-        #return hough_lut
-        hough_lut = hough_lut.astype(np.uint8)
-        hough_lut_fi = FastImage.asfastimage(hough_lut)
-        # take only the region where the quads of the mask extend
-        # XXX could make the non-square...
-        left,bottom,size = self._calc_lbs(self.quads_right,frac=4)
-        hough_lut_fi_roi = hough_lut_fi.roi( left, bottom, size )
-        result = (hough_lut_fi_roi, left, bottom)
-        return result
-
-    def _calc_lbs(self,quads,frac=1):
-        allx = [quad[0::2] for quad in quads]
-        ally = [quad[1::2] for quad in quads]
-        allx = np.hstack(allx)
-        ally = np.hstack(ally)
-        x0 = np.min(allx)
-        x1 = np.max(allx)
-        y0 = np.min(ally)
-        y1 = np.max(ally)
-
-        x0 = max(0,x0)
-        y0 = max(0,y0)
-        left = int(round(x0/frac))
-        bottom = int(round(y0/frac))
-
-        x1 = min(self.maxx,x1)
-        y1 = min(self.maxy,y1)
-        size = FastImage.Size(int(round((x1-x0)/frac)), int(round((y1-y0)/frac)))
-        return left, bottom, size
 
     @traits.cached_property
     def _get_right_mat(self):
@@ -469,17 +413,11 @@ class MaskData(traits.HasTraits):
         linesegs.append( verts.T.ravel() )
         return linesegs
 
-def quad2fastimage_offset(quad,width,height,x,y,gamma,sign,frac=1):
-    """convert a quad to an image vector"""
-
-
 def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     """convert a quad to an image vector"""
     mult = 1.0/frac
     newwidth = width//frac
     newheight = height//frac
-    assert newwidth*frac == width, "width is not evenly divisible by frac"
-    assert newheight*frac == height, "height is not evenly divisible by frac"
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
                                  width, height)
     ctx = cairo.Context(surface)
@@ -1084,18 +1022,6 @@ class SobelFinder(AmplitudeFinder):
 
             if self.update_plots:
 
-                if 1:
-                    tmp = self.strokelitude_instance.maskdata.hough_right
-                    #tmp = self.strokelitude_instance.maskdata.hough_left
-                    (hough_lut_fi_roi, left, bottom) = tmp
-                    Hfull=np.zeros((480//4,640//4),dtype=np.uint8)
-                    fullfi = FastImage.asfastimage(Hfull)
-                    loc = fullfi.roi(left,bottom,hough_lut_fi_roi.size)
-                    hough_lut_fi_roi.get_8u_copy_put(loc,hough_lut_fi_roi.size)
-
-                    self.a2_pd.set_data("imagedata", Hfull)
-                    self.a2_viewer.plot.request_redraw()
-
                 self.bg_pd.set_data("imagedata", bad_cond*255)
                 self.bg_viewer.plot.request_redraw()
                     #print 'plotting range %f-%f'%(np.min(bad_cond),np.max(bad_cond))
@@ -1153,52 +1079,20 @@ class SobelFinder(AmplitudeFinder):
             if 1:
                 fi_binG = FastImage.asfastimage(binG)
 
-                tmp = self.strokelitude_instance.maskdata.hough_left
-                (hough_lut_fi_roi, left, bottom) = tmp
-                local_view = fi_binG.roi( left, bottom, hough_lut_fi_roi.size )
-                npview = np.asarray(local_view)
-                N_pixels = np.sum(npview)
-
-                if 0:
-                    self.a3_pd.set_data("imagedata", npview)
-                    self.a3_viewer.plot.request_redraw()
-
-                    print
-                    print binG.shape
-                    print 'binG[:5,:5]',binG[:5,:5]
-                    print 'np.sum(binG)',np.sum(binG)
-                    print 'left,bottom,hough_lut_fi_roi.size',left,bottom,hough_lut_fi_roi.size
-                    print 'N_pixels',N_pixels
-                    print 'npview.shape',npview.shape
-                    print 'np.asarray(hough_lut_fi_roi)[:5,:5]',np.asarray(hough_lut_fi_roi)[:5,:5]
-                bigsum = local_view.dot(hough_lut_fi_roi, local_view.size)
-                mean = bigsum/N_pixels
-                left_angle_radians = (mean/255.0*2*np.pi)-(np.pi)#/2.0)
+                # LEFT
+                left_mat_quarter = self.strokelitude_instance.maskdata.left_mat_quarter
+                left_vals = compute_sparse_mult(left_mat_quarter,fi_binG)
+                idx = np.argmax(left_vals)
+                left_angle_radians = self.strokelitude_instance.maskdata.index2angle('left',
+                                                                                     idx)
                 left_angle_degrees = left_angle_radians*R2D
 
-
                 # RIGHT
-                tmp = self.strokelitude_instance.maskdata.hough_right
-                (hough_lut_fi_roi, left, bottom) = tmp
-                local_view = fi_binG.roi( left, bottom, hough_lut_fi_roi.size )
-                npview = np.asarray(local_view)
-                N_pixels = np.sum(npview)
-
-                if 0:
-                    self.a3_pd.set_data("imagedata", npview)
-                    self.a3_viewer.plot.request_redraw()
-
-                    print
-                    print binG.shape
-                    print 'binG[:5,:5]',binG[:5,:5]
-                    print 'np.sum(binG)',np.sum(binG)
-                    print 'left,bottom,hough_lut_fi_roi.size',left,bottom,hough_lut_fi_roi.size
-                    print 'N_pixels',N_pixels
-                    print 'npview.shape',npview.shape
-                    print 'np.asarray(hough_lut_fi_roi)[:5,:5]',np.asarray(hough_lut_fi_roi)[:5,:5]
-                bigsum = local_view.dot(hough_lut_fi_roi, local_view.size)
-                mean = bigsum/N_pixels
-                right_angle_radians = (mean/255.0*2*np.pi)-(np.pi)#/2.0)
+                right_mat_quarter = self.strokelitude_instance.maskdata.right_mat_quarter
+                right_vals = compute_sparse_mult(right_mat_quarter,fi_binG)
+                idx = np.argmax(right_vals)
+                right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
+                                                                                      idx)
                 right_angle_degrees = right_angle_radians*R2D
             else:
                 if binarize:
