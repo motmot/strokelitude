@@ -1406,7 +1406,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                ))
 
     def __init__(self,*args,**kw):
-        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,600))
+        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,750))
         super(StrokelitudeClass,self).__init__(*args,**kw)
 
         self._list_of_timestamp_data = []
