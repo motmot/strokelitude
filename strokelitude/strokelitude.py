@@ -47,6 +47,21 @@ import motmot.fview_ext_trig.live_timestamp_modeler as modeler_module
 import math
 import time
 
+
+# ROS stuff ------------------------------
+try:
+    import roslib
+    have_ROS = True
+except ImportError, err:
+    have_ROS = False
+
+if have_ROS:
+    roslib.load_manifest('strokelitude_ros')
+    from strokelitude_ros.msg import FlyWingEstimate
+    import rospy
+    import rospy.core
+# -----------------------------------------
+
 DataReadyEvent = wx.NewEventType()
 BGReadyEvent = wx.NewEventType()
 
@@ -1467,6 +1482,17 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
         wx.EVT_TIMER(self.frame, ID_Timer, self.OnTimer)
         self.timer.Start(2000)
 
+        if have_ROS:
+            rospy.init_node('fview', # common name across all plugins so multiple calls to init_node() don't fail
+                            anonymous=True, # allow multiple instances to run
+                            disable_signals=True, # let WX intercept them
+                            )
+            self.publisher_lock = threading.Lock()
+            self.publisher = rospy.Publisher('strokelitude',
+                                             FlyWingEstimate,
+                                             tcp_nodelay=True,
+                                             )
+
     def _timestamp_modeler_changed(self,newvalue):
         # register our handlers
         self.timestamp_modeler.on_trait_change(self.on_ain_data_raw,
@@ -1669,6 +1695,20 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
 
         tmp = self.current_amplitude_method.process_frame(buf,buf_offset,timestamp,framenumber)
         left_angle_degrees, right_angle_degrees = tmp
+
+        if self.current_amplitude_method.processing_enabled and have_ROS:
+            msg = FlyWingEstimate()
+            msg.header.seq=framenumber
+            if timestamp is not None:
+                msg.header.stamp=rospy.Time.from_sec(timestamp)
+            else:
+                msg.header.stamp=rospy.Time.from_sec(0.0)
+            msg.header.frame_id = "0"
+            msg.left_wing_angle_radians = left_angle_degrees * D2R
+            msg.right_wing_angle_radians = right_angle_degrees * D2R
+            if have_ROS:
+                with self.publisher_lock:
+                    self.publisher.publish(msg)
 
         # draw lines
         for side, angle_degrees in [('left',left_angle_degrees),
