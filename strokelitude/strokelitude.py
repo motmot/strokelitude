@@ -294,7 +294,6 @@ class MaskData(traits.HasTraits):
         # take only the region where the quads of the mask extend
         # XXX could make the non-square...
         left,bottom,size = self._calc_lbs(self.quads_right,frac=4)
-        print 'left,bottom,size',left,bottom,size
         hough_lut_fi_roi = hough_lut_fi.roi( left, bottom, size )
         result = (hough_lut_fi_roi, left, bottom)
         return result
