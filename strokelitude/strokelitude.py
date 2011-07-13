@@ -51,15 +51,20 @@ import time
 # ROS stuff ------------------------------
 try:
     import roslib
+    from roslib.packages import InvalidROSPkgException
     have_ROS = True
 except ImportError, err:
     have_ROS = False
 
 if have_ROS:
-    roslib.load_manifest('strokelitude_ros')
-    from strokelitude_ros.msg import FlyWingEstimate
-    import rospy
-    import rospy.core
+    try:
+        roslib.load_manifest('strokelitude_ros')
+    except InvalidROSPkgException:
+        have_ROS = False
+    else:
+        from strokelitude_ros.msg import FlyWingEstimate
+        import rospy
+        import rospy.core
 # -----------------------------------------
 
 DataReadyEvent = wx.NewEventType()
