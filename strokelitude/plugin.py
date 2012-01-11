@@ -2,7 +2,11 @@ import os, sys, random
 import multiprocessing
 import remote_traits
 import warnings
-import enthought.traits.api as traits
+try:
+    import enthought.traits.api as traits
+except ImportError:
+    # traits 4.x
+    import traits.api as traits
 
 def mainloop(klass_proxy,klass_worker,
              hostname,port,obj_name,data_queue,save_data_queues,

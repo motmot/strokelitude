@@ -26,22 +26,42 @@ import motmot.FlyMovieFormat.FlyMovieFormat as FMF
 
 import tables # pytables
 
-import enthought.traits.api as traits
-from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
-     VGroup, RangeEditor, InstanceEditor, ButtonEditor
+try:
+    import enthought.traits.api as traits
+    from enthought.traits.ui.api import View, Item, Group, Handler, HGroup, \
+        VGroup, RangeEditor, InstanceEditor, ButtonEditor
+except ImportError:
+    import traits.api as traits
+    from traitsui.api import View, Item, Group, Handler, HGroup, \
+        VGroup, RangeEditor, InstanceEditor, ButtonEditor
 
-from enthought.enable.api import Component, Container
-from enthought.enable.wx_backend.api import Window
-from enthought.chaco.api import DataView, ArrayDataSource, ScatterPlot, \
-     LinePlot, LinearMapper, ArrayPlotData, Plot, gray
-from enthought.enable.component_editor import ComponentEditor
-import enthought.chaco.default_colormaps as default_colormaps
-from enthought.chaco.data_range_1d import DataRange1D
-from enthought.chaco.api import create_line_plot, add_default_axes, \
-     add_default_grids
-from enthought.chaco.tools.api import PanTool, ZoomTool
-from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
-     ImageInspectorOverlay
+try:
+    from enthought.enable.component_editor import ComponentEditor
+except ImportError:
+    from enable.component_editor import ComponentEditor
+
+try:
+    from enthought.chaco.api import DataView, ArrayDataSource, ScatterPlot, \
+        LinePlot, LinearMapper, ArrayPlotData, Plot, gray
+    import enthought.chaco.default_colormaps as default_colormaps
+    from enthought.chaco.data_range_1d import DataRange1D
+    from enthought.chaco.api import create_line_plot, add_default_axes, \
+        add_default_grids
+    from enthought.chaco.tools.api import PanTool, ZoomTool
+    from enthought.chaco.tools.image_inspector_tool import ImageInspectorTool, \
+        ImageInspectorOverlay
+except ImportError:
+    from chaco.api import DataView, ArrayDataSource, ScatterPlot, \
+        LinePlot, LinearMapper, ArrayPlotData, Plot, gray
+    import chaco.default_colormaps as default_colormaps
+    from chaco.data_range_1d import DataRange1D
+    from chaco.api import create_line_plot, add_default_axes, \
+        add_default_grids
+    from chaco.tools.api import PanTool, ZoomTool
+    from chaco.tools.image_inspector_tool import ImageInspectorTool, \
+        ImageInspectorOverlay
+
+
 import motmot.fview_ext_trig.live_timestamp_modeler as modeler_module
 
 import math
