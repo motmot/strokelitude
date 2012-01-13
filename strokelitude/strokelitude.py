@@ -909,9 +909,9 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 class SobelFinder(AmplitudeFinder):
     processing_enabled = traits.Bool(False)
     mask_thresh = traits.Int(150)
-    maxG = traits.Int(400)
-    n_iterations_dilation = traits.Int(10)
-    gaussian_sigma = traits.Float(3.0)
+    maxG = traits.Int(60)
+    n_iterations_dilation = traits.Int(5)
+    gaussian_sigma = traits.Float(2.0)
     line_strength_thresh = traits.Float(20.0)
     update_plots = traits.Bool(False)
 
