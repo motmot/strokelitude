@@ -455,7 +455,7 @@ def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     newwidth = width//frac
     newheight = height//frac
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
-                                 width, height)
+                                 int(width), int(height))
     ctx = cairo.Context(surface)
     ctx.set_source_rgb(0,0,0)
 
