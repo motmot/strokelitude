@@ -158,6 +158,13 @@ class MaskData(traits.HasTraits):
     beta = traits.Range(-90.0, 90.0, 14.0, mode='slider', set_enter=True)
     gamma = traits.Range(0.0, 360.0, 206.0, mode='slider', set_enter=True)
 
+    # leg tracking
+    leg_distance1 = traits.Range(0.0, 1000.0, 200.0, mode='slider', set_enter=True)
+    leg_len1 = traits.Range(0.0, 1000.0, 50.0, mode='slider', set_enter=True)
+
+    leg_distance2 = traits.Range(0.0, 1000.0, 200.0, mode='slider', set_enter=True)
+    leg_len2 = traits.Range(0.0, 1000.0, 0.0, mode='slider', set_enter=True)
+
     # number of angular bins
     nbins = traits.Int(30)
 
@@ -179,6 +186,13 @@ class MaskData(traits.HasTraits):
     left_mat_quarter = traits.Property(depends_on=['quads_left'])
     left_mat_quarter_norm = traits.Property(depends_on=['left_mat_quarter'])
 
+    legbox_left = traits.Property(depends_on=[
+        'rotation','translation','view_from_below',
+        'leg_distance1', 'leg_len1',
+        'leg_distance2', 'leg_len2',
+        ])
+    left_legbox_mat = traits.Property(depends_on=['legbox_left'])
+
     mean_quad_angles_deg = traits.Property(depends_on=[
         'alpha', 'beta', 'nbins'])
 
@@ -191,6 +205,13 @@ class MaskData(traits.HasTraits):
     right_mat_quarter = traits.Property(depends_on=['quads_right'])
     right_mat_quarter_norm = traits.Property(depends_on=['right_mat_quarter'])
 
+    legbox_right = traits.Property(depends_on=[
+        'rotation','translation','view_from_below',
+        'leg_distance1', 'leg_len1',
+        'leg_distance2', 'leg_len2',
+        ])
+    right_legbox_mat = traits.Property(depends_on=['legbox_right'])
+
     extra_linesegs = traits.Property(depends_on=[
         'wingsplit', 'r1', 'r2', 'alpha', 'beta', 'nbins',
         'rotation','translation','view_from_below',
@@ -198,12 +219,14 @@ class MaskData(traits.HasTraits):
 
     all_linesegs = traits.Property(depends_on=[
         'quads_left', 'quads_right', 'extra_linesegs',
+        'legbox_left', 'legbox_right',
         ] )
 
     @traits.cached_property
     def _get_all_linesegs(self):
         # concatenate lists
-        return (self.quads_left + self.quads_right + self.extra_linesegs)
+        return (self.quads_left + self.quads_right + self.extra_linesegs +
+                self.legbox_left + self.legbox_right)
 
     @traits.cached_property
     def _get_maxdim(self):
@@ -242,6 +265,10 @@ class MaskData(traits.HasTraits):
                                  Item('alpha',style='custom'),
                                  Item('beta',style='custom'),
                                  Item('gamma',style='custom'),
+                                 Item('leg_distance1',style='custom'),
+                                 Item('leg_distance2',style='custom'),
+                                 Item('leg_len1',style='custom'),
+                                 Item('leg_len2',style='custom'),
                                  ),
                                ),
                         title = 'Mask Parameters',
@@ -259,6 +286,34 @@ class MaskData(traits.HasTraits):
     @traits.cached_property
     def _get_quads_right(self):
         return self.get_quads('right')
+
+    @traits.cached_property
+    def _get_legbox_left(self):
+        return self.get_legbox('left')
+
+    @traits.cached_property
+    def _get_legbox_right(self):
+        return self.get_legbox('right')
+
+    @traits.cached_property
+    def _get_left_legbox_mat(self):
+        result = []
+        quad = self.legbox_left[0]
+        if 1:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy)
+            result.append( (fi_roi, left, bottom) )
+        return result
+
+    @traits.cached_property
+    def _get_right_legbox_mat(self):
+        result = []
+        quad = self.legbox_right[0]
+        if 1:
+            fi_roi, left, bottom = quad2fastimage_offset(quad,
+                                                         self.maxx,self.maxy)
+            result.append( (fi_roi, left, bottom) )
+        return result
 
     @traits.cached_property
     def _get_left_mat(self):
@@ -426,6 +481,22 @@ class MaskData(traits.HasTraits):
 
         return linesegs
 
+    def get_legbox(self,side):
+        sign = mult_sign[self.view_from_below][side]
+        x1 = self.leg_distance1
+        x2 = x1+self.leg_len1
+        y1 = self.leg_distance2
+        y2 = y1+self.leg_len2
+        verts = np.array([
+            (x1, sign*y1),
+            (x2, sign*y1),
+            (x2,sign*y2),
+            (x1, sign*y2),
+            (x1, sign*y1),
+            ], dtype=np.float).T
+        verts = np.dot(self.rotation, verts) + self.translation
+        return [verts.T.ravel()]
+
     def index2angle(self,side,idx):
         """convert index to angle (in radians)"""
         alpha = self.alpha*D2R
@@ -449,8 +520,12 @@ class MaskData(traits.HasTraits):
         linesegs.append( verts.T.ravel() )
         return linesegs
 
-def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
+def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False,debug=False):
     """convert a quad to an image vector"""
+    if debug:
+        print 'quad2fastimage_offset'
+        print 'quad',quad
+        print
     mult = 1.0/frac
     newwidth = width//frac
     newheight = height//frac
@@ -485,7 +560,7 @@ def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     ctx.close_path()
     ctx.set_source_rgb(1,1,1)
     ctx.fill()
-    if 0:
+    if debug:
         fname = 'poly_left_%05d.png'%debug_count
         print 'saving',fname
         surface.write_to_png(fname)
@@ -494,7 +569,7 @@ def quad2fastimage_offset(quad,width,height,debug_count=0,frac=1,float32=False):
     # Now, convert to numpy
     arr = np.frombuffer(buf, np.uint8)
     arr.shape = (height, width, 4)
-    if 0:
+    if debug:
         import scipy.misc.pilutil
         fname = 'mask_%05d.png'%debug_count
         print 'saving',fname
@@ -592,7 +667,7 @@ class AmplitudeFinder(traits.HasTraits):
         left_angle_degrees = np.nan
         right_angle_degrees = np.nan
 
-        return left_angle_degrees, right_angle_degrees
+        return left_angle_degrees, right_angle_degrees, {}
 
 class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
     mask_dirty = traits.Bool(False) # let __init__ set True
@@ -762,7 +837,7 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
         have_lock = self.recomputing_lock.acquire(False) # don't block
         if not have_lock:
-            return left_angle_degrees, right_angle_degrees
+            return left_angle_degrees, right_angle_degrees, {}
 
         try:
             command = None
@@ -878,7 +953,7 @@ class BackgroundSubtractionDotProductFinder(AmplitudeFinder):
 
         finally:
             self.recomputing_lock.release()
-        return left_angle_degrees, right_angle_degrees
+        return left_angle_degrees, right_angle_degrees, {}
 
     def _recompute_mask_fired(self):
         with self.recomputing_lock:
@@ -1037,11 +1112,24 @@ class SobelFinder(AmplitudeFinder):
         left_angle_degrees = np.nan
         right_angle_degrees = np.nan
 
-
+        additional = {}
         if self.processing_enabled:
             frame = np.asarray(buf)
 
             downsampled = np.array(frame[::4,::4])
+            if 1:
+                fi_frame = FastImage.asfastimage(frame)
+
+                # calculate legbox
+                left_legbox_mat = self.strokelitude_instance.maskdata.left_legbox_mat
+                left_legbox_vals = compute_sparse_mult(left_legbox_mat,fi_frame)
+
+                right_legbox_mat = self.strokelitude_instance.maskdata.right_legbox_mat
+                right_legbox_vals = compute_sparse_mult(right_legbox_mat,fi_frame)
+
+                additional['left_legbox']=left_legbox_vals[0]
+                additional['right_legbox']=right_legbox_vals[0]
+
             bad_cond = (downsampled < self.mask_thresh).astype(np.uint8)
             if True:
                 fi_bad_cond = FastImage.asfastimage(bad_cond)
@@ -1150,7 +1238,7 @@ class SobelFinder(AmplitudeFinder):
                     right_angle_radians = self.strokelitude_instance.maskdata.index2angle('right',
                                                                                           idx_right)
                     right_angle_degrees = right_angle_radians*R2D
-        return left_angle_degrees, right_angle_degrees
+        return left_angle_degrees, right_angle_degrees, additional
 
 class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
     plugin_name = traits.Str('-=| strokelitude |=-')
@@ -1613,7 +1701,7 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             trigger_timestamp = timestamp
 
         tmp = self.current_amplitude_method.process_frame(buf,buf_offset,timestamp,framenumber)
-        left_angle_degrees, right_angle_degrees = tmp
+        left_angle_degrees, right_angle_degrees, additional = tmp
 
         if self.current_amplitude_method.processing_enabled and have_ROS:
             msg = FlyWingEstimate()
@@ -1625,6 +1713,17 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
             msg.header.frame_id = "0"
             msg.left_wing_angle_radians = left_angle_degrees * D2R
             msg.right_wing_angle_radians = right_angle_degrees * D2R
+
+            if 'left_legbox' in additional:
+                msg.left_legbox_intensity = additional['left_legbox']
+            else:
+                msg.left_legbox_intensity = np.nan
+
+            if 'right_legbox' in additional:
+                msg.right_legbox_intensity = additional['right_legbox']
+            else:
+                msg.right_legbox_intensity = np.nan
+
             if have_ROS:
                 with self.publisher_lock:
                     self.publisher.publish(msg)
