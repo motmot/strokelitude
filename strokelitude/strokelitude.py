@@ -1130,6 +1130,16 @@ class SobelFinder(AmplitudeFinder):
                 additional['left_legbox']=left_legbox_vals[0]
                 additional['right_legbox']=right_legbox_vals[0]
 
+                # calculate wingbox (luminance of wing region to detect flight/no flight)
+                left_mat = self.strokelitude_instance.maskdata.left_mat[-2:]
+                left_vals = compute_sparse_mult(left_mat,fi_frame)
+
+                right_mat = self.strokelitude_instance.maskdata.right_mat[-2:]
+                right_vals = compute_sparse_mult(right_mat,fi_frame)
+
+                additional['left_wingbox']=np.sum(left_vals[0])
+                additional['right_wingbox']=np.sum(right_vals[0])
+
             bad_cond = (downsampled < self.mask_thresh).astype(np.uint8)
             if True:
                 fi_bad_cond = FastImage.asfastimage(bad_cond)
@@ -1723,6 +1733,16 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                 msg.right_legbox_intensity = additional['right_legbox']
             else:
                 msg.right_legbox_intensity = np.nan
+
+            if 'left_wingbox' in additional:
+                msg.left_wingbox_intensity = additional['left_wingbox']
+            else:
+                msg.left_wingbox_intensity = np.nan
+
+            if 'right_wingbox' in additional:
+                msg.right_wingbox_intensity = additional['right_wingbox']
+            else:
+                msg.right_wingbox_intensity = np.nan
 
             if have_ROS:
                 with self.publisher_lock:
