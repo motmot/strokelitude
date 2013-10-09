@@ -1422,9 +1422,9 @@ class StrokelitudeClass(traited_plugin.HasTraits_FViewPlugin):
                                     style='readonly'),
                                ))
 
-    def __init__(self,*args,**kw):
-        kw['wxFrame args']=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,750))
-        super(StrokelitudeClass,self).__init__(*args,**kw)
+    def __init__(self,wx_parent,fview_options):
+        super(StrokelitudeClass,self).__init__(wx_parent,
+                wxframe_args=(-1,self.plugin_name,wx.DefaultPosition,wx.Size(800,750)))
 
         self._list_of_timestamp_data = []
         self._list_of_ain_wordstream_buffers = []
