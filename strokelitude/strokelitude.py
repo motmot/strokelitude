@@ -596,16 +596,34 @@ def compute_sparse_mult(list_of_fi_offsets, fi_im):
     return result
 
 StrokelitudeDataDescription = data_format.StrokelitudeDataDescription
-StrokelitudeDataCol_dtype = tables.Description(
-    StrokelitudeDataDescription().columns)._v_nestedDescr
+try:
+    # PyTables 2.8
+    StrokelitudeDataCol_dtype = tables.Description(
+        StrokelitudeDataDescription().columns)._v_nestedDescr
+except AttributeError as err:
+    # PyTables 3.2
+    StrokelitudeDataCol_dtype = tables.Description(
+        StrokelitudeDataDescription().columns)._v_nested_descr
 
 AnalogInputWordstreamDescription = data_format.AnalogInputWordstreamDescription
-AnalogInputWordstream_dtype =  tables.Description(
-    AnalogInputWordstreamDescription().columns)._v_nestedDescr
+try:
+    # PyTables 2.8
+    AnalogInputWordstream_dtype =  tables.Description(
+        AnalogInputWordstreamDescription().columns)._v_nestedDescr
+except AttributeError as err:
+    # PyTables 3.2
+    AnalogInputWordstream_dtype =  tables.Description(
+        AnalogInputWordstreamDescription().columns)._v_nested_descr
 
 TimeDataDescription = data_format.TimeDataDescription
-TimeData_dtype =  tables.Description(
-    TimeDataDescription().columns)._v_nestedDescr
+try:
+    # PyTables 2.8
+    TimeData_dtype =  tables.Description(
+        TimeDataDescription().columns)._v_nestedDescr
+except AttributeError as err:
+    # PyTables 3.2
+    TimeData_dtype =  tables.Description(
+        TimeDataDescription().columns)._v_nested_descr
 
 class LiveDataPlot(traits.HasTraits):
     left_angle = traits.Float
